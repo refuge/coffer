@@ -1,0 +1,17 @@
+{application, coffer,
+ [
+  {description, "Blob strongbox"},
+  {vsn, "0.1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  lager,
+                  crypto,
+                  sasl,
+                  ranch,
+                  cowboy
+                 ]},
+  {mod, { coffer_app, []}},
+  {env, [{ip, any}, {port, 8080}]}
+ ]}.
