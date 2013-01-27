@@ -1,3 +1,7 @@
+%%% -*- erlang -*-
+%%%
+%%% This file is part of coffer released under the Apache license 2.
+%%% See the NOTICE for more information.
 
 -module(coffer_sup).
 
@@ -24,14 +28,8 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-    {Backend, BackendArgs} = case application:get_env(coffer, backend) of
-        undefined ->
-            {coffer_simple_storage, [[]]};
-        {ok, Other} ->
-            Other
-    end,
-    BlobManager = ?CHILD(coffer_manager, [[Backend, BackendArgs]]),
+    ResourceManager = ?CHILD(coffer_resource, [[]]),
 
-    Children = [BlobManager],
+    Children = [ResourceManager],
     RestartStrategy = {one_for_one, 1, 60},
     {ok, { RestartStrategy, Children } }.

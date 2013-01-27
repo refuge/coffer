@@ -1,3 +1,7 @@
+%%% -*- erlang -*-
+%%%
+%%% This file is part of coffer released under the Apache license 2.
+%%% See the NOTICE for more information.
 
 -module(coffer_util).
 

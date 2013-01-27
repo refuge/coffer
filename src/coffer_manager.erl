@@ -1,3 +1,8 @@
+%%% -*- erlang -*-
+%%%
+%%% This file is part of coffer released under the Apache license 2.
+%%% See the NOTICE for more information.
+
 -module(coffer_manager).
 -behaviour(gen_server).
 -define(SERVER, ?MODULE).

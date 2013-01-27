@@ -1,39 +1,58 @@
+%%% -*- erlang -*-
+%%%
+%%% This file is part of coffer released under the Apache license 2.
+%%% See the NOTICE for more information.
+
 -module(coffer_storage).
 
--include("includes/coffer.hrl").
+%% Types
 
--callback start_link(Args :: list()) ->
-    pid().
+-type blob_id() :: binary().
+-type options() :: list().
+-type storage_ref() :: record().
+-type chunk() :: binary() | {stream, Bin :: binary()} | {stream, done}.
 
--callback stop() ->
-    ok.
+%% callbacks
 
--callback init_storage(Options :: list()) ->
-    ok.
+-callback start(Config :: list()) ->
+    {ok, InitState :: any()}
+    | {error, Reason :: any()}.
 
--callback get_blob_init(Id :: blob_id()) ->
-    {ok, any()} | {error, Reason :: atom()}.
+-callback stop(State :: record()) ->
+    ok
+    | {error, Reason :: any()}.
 
--callback get_blob(Token :: any()) ->
-    {ok, Data ::  data()} | eof | {error, Reason :: atom()}.
+-callback open(State :: any(), Options :: options()) ->
+    {ok, Ref :: storage_ref()}
+    | {error, Reason :: any()}.
 
--callback get_blob_end(Token :: any()) ->
-    ok | {error, Reason :: atom()}.
+-callback close(Ref :: record()) ->
+    ok
+    | {error, Reason :: any()}.
 
--callback store_blob_init(Id :: blob_id()) ->
-    {ok, Token :: any()} | {error, Reason :: atom()}.
+-callback put(Ref :: storage_ref(), Id :: blob_id(), Chunk :: chunk()) ->
+    {ok, Ref1 :: record()}
+    | {error, Reason :: any()}.
 
--callback store_blob(Token :: any(), Data :: data()) ->
-    ok | {error, Reason :: atom()}.
+-callback get(Ref :: storage_ref(), Id :: blob_id(), Options :: options()) ->
+    {ok, Data :: binary(), Ref1 :: storage_ref()}      % in memory
+    | {chunk, Data :: binary(), Ref1 :: storage_ref()} % with Options = [stream]
+    | {done, Data :: binary(), Ref1 :: storage_ref()}  % with Options = [stream]
+    | {error, Reason :: any()}.
 
--callback store_blob_end(Token :: any()) ->
-    ok | {error, Reason :: atom()}.
+-callback delete(Ref :: storage_ref(), Id :: blob_id()) ->
+    {ok, Ref1 :: storage_ref()}
+    | {error, Reason :: any()}.
 
--callback remove_blob(Id :: blob_id()) ->
-    ok | {error, Reason :: atom()}.
+-callback enumerate(Ref :: storage_ref()) ->
+    {ok, List :: list()}
+    | {error, Reason :: any()}.
 
--callback fold_blobs(Func :: fun((Id :: blob_id(), Acc :: any()) -> any()), InitState :: any()) ->
-    any().
+-callback foldl(Ref :: storage_ref(), Func :: fun((Id :: blob_id(), Acc :: any()) -> Final :: any()), Initstate :: any(), Options :: options()) ->
+    {ok, Final :: any()}
+    | {error, Reason :: any()}.
 
--callback exists(Id :: blob_id()) ->
-    boolean().
+-callback foreach(Ref :: storage_ref(), Func :: fun((Id :: blob_id()) -> Final :: any())) ->
+    ok
+    | {error, Reason :: any()}.
+
