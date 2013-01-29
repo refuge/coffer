@@ -3,7 +3,7 @@
 %%% This file is part of coffer released under the Apache license 2.
 %%% See the NOTICE for more information.
 
--module(coffer_null_storage).
+-module(coffer_storage_null).
 -behaviour(coffer_storage).
 
 -export([start/1, stop/1]).

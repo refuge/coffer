@@ -3,7 +3,7 @@
 %%% This file is part of coffer released under the Apache license 2.
 %%% See the NOTICE for more information.
 
--module(coffer_ets_storage).
+-module(coffer_storage_ets).
 -behaviour(coffer_storage).
 -behaviour(gen_server).
 -define(SERVER, ?MODULE).
