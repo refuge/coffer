@@ -15,7 +15,7 @@
 
 -export([start/1, stop/1]).
 -export([open/2, close/1]).
--export([put/3, get/3, delete/2, enumerate/1, foldl/4, foreach/2]).
+-export([put/3, get/3, delete/2, all/1, foldl/4, foreach/2]).
 
 %% ------------------------------------------------------------------
 %% API Function Definitions
@@ -111,7 +111,7 @@ delete(#sref{config=Config}=SRef, Id) ->
             {error, Reason}
     end.
 
-enumerate(_SRef) ->
+all(_SRef) ->
     {error, not_yet_supported}.
 
 foldl(_SRef, _Func, _InitState, _Options) ->

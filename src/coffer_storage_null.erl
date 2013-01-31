@@ -8,7 +8,7 @@
 
 -export([start/1, stop/1]).
 -export([open/2, close/1]).
--export([put/3, get/3, delete/2, enumerate/1, foldl/4, foreach/2]).
+-export([put/3, get/3, delete/2, all/1, foldl/4, foreach/2]).
 
 start(_Config) ->
     {ok, []}.
@@ -31,7 +31,7 @@ get(_Ref, _Id, _Options) ->
 delete(_Ref, _Id) ->
     {ok, []}.
 
-enumerate(_Ref) ->
+all(_Ref) ->
     {ok, []}.
 
 foldl(_Ref, _Func, _Initstate, _Options) ->

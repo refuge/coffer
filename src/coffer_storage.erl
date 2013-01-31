@@ -44,7 +44,7 @@
     {ok, Ref1 :: storage_ref()}
     | {error, Reason :: any()}.
 
--callback enumerate(Ref :: storage_ref()) ->
+-callback all(Ref :: storage_ref()) ->
     {ok, List :: list()}
     | {error, Reason :: any()}.
 

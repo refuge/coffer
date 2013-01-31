@@ -14,7 +14,7 @@
 
 -export([start/1, stop/1]).
 -export([open/2, close/1]).
--export([put/3, get/3, delete/2, enumerate/1, foldl/4, foreach/2]).
+-export([put/3, get/3, delete/2, all/1, foldl/4, foreach/2]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
@@ -50,8 +50,8 @@ get(Pid, Id, Options) ->
 delete(Pid, Id) ->
     gen_server:call(Pid, {delete, Id}).
 
-enumerate(Pid) ->
-    gen_server:call(Pid, {enumerate}).
+all(Pid) ->
+    gen_server:call(Pid, {all}).
 
 foldl(Pid, Func, InitState, Options) ->
     gen_server:call(Pid, {foldl, Func, InitState, Options}).
@@ -84,7 +84,7 @@ handle_call({get, Id, _Options}, _From, Tid) ->
 handle_call({delete, Id}, _From, Tid) ->
     ets:delete(Tid, Id),
     {reply, {ok, self()}, Tid};
-handle_call({enumerate}, _From, Tid) ->
+handle_call({all}, _From, Tid) ->
     Value = ets:foldl(
         fun({Key, _}, Acc) ->
             [Key|Acc]
