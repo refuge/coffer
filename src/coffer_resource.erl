@@ -97,8 +97,9 @@ handle_call({list}, _From, #state{resources=Resources}=State) ->
 handle_call({add, ResourceName, Backend, Config}, _From, State) ->
     {Reply, NewState} = do_add_resource(ResourceName, Backend, Config, State),
     {reply, Reply, NewState};
-handle_call({remove, _ResourceName}, _From, State) ->
-    {reply, {error, not_yet_implemented}, State};
+handle_call({remove, ResourceName}, _From, State) ->
+    {Reply, NewState} = do_remove_resource(ResourceName, State),
+    {reply, Reply, NewState};
 handle_call({open, ResourceName, Options}, _From, #state{resources=Resources}=State) ->
     case proplists:get_value(ResourceName, Resources) of
         undefined ->
@@ -179,3 +180,18 @@ do_add_resource(ResourceName, Backend, Config, #state{resources=Resources}=State
             {{error, already_exists}, State}
     end.
 
+ do_remove_resource(ResourceName, #state{resources=Resources}=State) ->
+    case proplists:get_value(ResourceName, Resources, undefined) of
+        undefined ->
+            {{error, doesnt_exist}, State};
+        #resource{backend=Backend, init=InitState}=_Resource ->
+            lager:info("Stopping resource ~p", [ResourceName]),
+            case Backend:stop(InitState) of
+                ok ->
+                    lager:info("Resource ~p is now stopped", [ResourceName]),
+                    UpdatedResources = proplists:delete(ResourceName, Resources),
+                    {ok, State#state{resources=UpdatedResources}};
+                {error, Reason} ->
+                    {{error, Reason}, State}
+            end
+    end.
