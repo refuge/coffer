@@ -37,7 +37,7 @@
 -callback get(Ref :: storage_ref(), Id :: blob_id(), Options :: options()) ->
     {ok, Data :: binary(), Ref1 :: storage_ref()}      % in memory
     | {chunk, Data :: binary(), Ref1 :: storage_ref()} % with Options = [stream]
-    | {done, Data :: binary(), Ref1 :: storage_ref()}  % with Options = [stream]
+    | {chunk, done, Ref1 :: storage_ref()}  % with Options = [stream]
     | {error, Reason :: any()}.
 
 -callback delete(Ref :: storage_ref(), Id :: blob_id()) ->

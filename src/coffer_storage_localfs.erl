@@ -106,6 +106,31 @@ get(#sref{config=Config}=SRef, Id, []) ->
                     {error, Reason}
             end
     end;
+get(#sref{config=Config, iodevice=undefined}=SRef, Id, [stream]) ->
+    RepoHome = Config#config.repo_home,
+    Filename = content_full_location(RepoHome, Id),
+    case filelib:is_file(Filename) of
+        false ->
+            {error, not_exist};
+        true  ->
+            case file:open(Filename, [read, binary]) of
+                {ok, IoDevice} ->
+                    get(SRef#sref{iodevice=IoDevice}, Id, [stream]);
+                {error, Reason} ->
+                    {error, Reason}
+            end
+    end;
+get(#sref{config=Config, iodevice=IoDevice}=SRef, _Id, [stream]) ->
+    ChunkSize = Config#config.chunk_size,
+    case file:read(IoDevice, ChunkSize) of
+        {ok, Binary} ->
+            {chunk, Binary, SRef#sref{iodevice=IoDevice}}; 
+        eof ->
+            file:close(IoDevice),
+            {chunk, done, SRef#sref{iodevice=undefined}};
+        {error, Reason} ->
+            {error, Reason}
+    end;
 get(_SRef, _Id, _Options) ->
     {error, not_yet_supported}.
 
