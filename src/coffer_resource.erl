@@ -15,7 +15,7 @@
 
 -export([start_link/1]).
 -export([list/0]).
--export([add/2, remove/1]).
+-export([add/3, remove/1]).
 -export([open/2, close/1]).
 
 %% ------------------------------------------------------------------
@@ -35,8 +35,8 @@ start_link(Args) ->
 list() ->
     gen_server:call(?MODULE, {list}).
 
-add(ResourceName, Config) ->
-    gen_server:call(?MODULE, {add, ResourceName, Config}).
+add(ResourceName, Backend, Config) ->
+    gen_server:call(?MODULE, {add, ResourceName, Backend, Config}).
 
 remove(ResourceName) ->
     gen_server:call(?MODULE, {remove, ResourceName}).
@@ -52,8 +52,16 @@ close(Ref) ->
 %% ------------------------------------------------------------------
 
 % gen_server state records
--record(state, {resources, options}).
--record(resource, {name, backend, config, init}).
+-record(state, {
+    resources = [],
+    options = []
+}).
+-record(resource, {
+    name,
+    backend,
+    config = [],
+    init
+}).
 
 init([]) ->
     %
@@ -67,24 +75,15 @@ init([]) ->
         {ok, Other} ->
             Other
     end,
-    Resources = lists:foldl(
-        fun(Element, Acc) ->
-            {ResourceName, Backend, Config} = Element,
-            lager:info("Starting resource: ~p with backend: ~p", [ResourceName, Backend]),
-            case Backend:start(Config) of
-                {ok, InitState} ->
-                    lager:info("Resource ~p successfully started!", [ResourceName]),
-                    Resource = #resource{name=ResourceName, backend=Backend, config=Config, init=InitState},
-                    [ {ResourceName, Resource} | Acc];
-                ErrorAtLoad ->
-                    lager:error("An error occured loading the storage ~p with error: ~p~n", [ResourceName, ErrorAtLoad])
-            end
+    FinalState = lists:foldl(
+        fun({ResourceName, Backend, Config}, State) ->
+            {_, NewState} = do_add_resource(ResourceName, Backend, Config, State),
+            NewState
         end,
-        [],
+        #state{},
         ResourcesConfig
     ),
-    State = #state{resources=Resources, options=[]},
-    {ok, State}.
+    {ok, FinalState}.
 
 handle_call({list}, _From, #state{resources=Resources}=State) ->
     Reply = lists:foldl(
@@ -95,8 +94,9 @@ handle_call({list}, _From, #state{resources=Resources}=State) ->
         Resources
     ),
     {reply, Reply, State};
-handle_call({add, _ResourceName, _Config}, _From, State) ->
-    {reply, {error, not_yet_implemented}, State};
+handle_call({add, ResourceName, Backend, Config}, _From, State) ->
+    {Reply, NewState} = do_add_resource(ResourceName, Backend, Config, State),
+    {reply, Reply, NewState};
 handle_call({remove, _ResourceName}, _From, State) ->
     {reply, {error, not_yet_implemented}, State};
 handle_call({open, ResourceName, Options}, _From, #state{resources=Resources}=State) ->
@@ -158,4 +158,24 @@ code_change(_OldVsn, State, _Extra) ->
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
+
+do_add_resource(ResourceName, Backend, Config, #state{resources=Resources}=State) ->
+    case proplists:get_value(ResourceName, Resources, undefined) of
+        undefined ->
+            lager:info("Starting resource: ~p with backend: ~p", [ResourceName, Backend]),
+            case Backend:start(Config) of
+                {ok, InitState} ->
+                    lager:info("Resource ~p successfully started!", [ResourceName]),
+                    Resource = #resource{name=ResourceName, backend=Backend, config=Config, init=InitState},
+                    UpdatedResources = [ {ResourceName, Resource} | Resources ],
+                    NewState = State#state{resources=UpdatedResources},
+                    {ok, NewState};
+                ErrorAtLoad ->
+                    lager:error("An error occured loading the storage ~p with error: ~p~n", [ResourceName, ErrorAtLoad]),
+                    {{error, cant_start}, State}
+            end;
+        _AlreadyThere ->
+            lager:error("Resource ~p already exists!", [ResourceName]),
+            {{error, already_exists}, State}
+    end.
 
