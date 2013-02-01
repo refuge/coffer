@@ -111,8 +111,30 @@ delete(#sref{config=Config}=SRef, Id) ->
             {error, Reason}
     end.
 
-all(_SRef) ->
-    {error, not_yet_supported}.
+all(#sref{config=Config}=_SRef) ->
+    RepoHome = Config#config.repo_home,
+
+    ProcessFilename = fun(Filename, Acc) ->
+        Elements = string:tokens(Filename, "/"),
+        Length = length(Elements),
+        Id = list_to_binary(lists:nth(Length - 1, Elements) ++ lists:nth(Length, Elements)),
+        [Id|Acc]
+    end,
+
+    Value = filelib:fold_files(
+        RepoHome,
+        ".+",
+        true,
+        ProcessFilename,
+        []
+    ),
+
+    case Value of
+        List when is_list(List) ->
+            {ok, List};
+        BadValue ->
+            {error, BadValue}
+    end.
 
 foldl(_SRef, _Func, _InitState, _Options) ->
     {error, not_yet_supported}.
