@@ -31,7 +31,7 @@
 -record(sref, {
     options = [],
     config,
-    properties = []
+    iodevice = undefined
 }).
 
 start(Properties) ->
@@ -54,35 +54,43 @@ open(#state{config=Config}=_State, Options) ->
     SRef = #sref{options=Options, config=Config},
     {ok, SRef}.
 
-close(#sref{properties=Properties}=_SRef) ->
-    % close any remaining iodevice
-    case proplists:get_value(iodevice, Properties, undefined) of
-        undefined ->
-            ok;
-        IoDevice ->
-            file:close(IoDevice)
-    end,
+close(#sref{iodevice=undefined}=_SRef) ->
+    ok;
+close(#sref{iodevice=IoDevice}=_SRef) ->
+    file:close(IoDevice),
     ok.
 
-put(#sref{config=Config}=SRef, Id, Bin) when is_binary(Bin) ->
+put(SRef, Id, Bin) when is_binary(Bin) ->
+    case put(SRef, Id, {stream, Bin}) of
+        {ok, SRef1} ->
+            put(SRef1, Id, {stream, done});
+        Other ->
+            Other
+    end;
+put(#sref{config=Config, iodevice=undefined}=SRef, Id, {stream, Bin}) when is_binary(Bin) ->
     RepoHome = Config#config.repo_home,
     Filename = content_full_location(RepoHome, Id),
     maybe_create_directory(RepoHome, content_directory(Id)),
     case file:open(Filename, [write, binary]) of
         {ok, IoDevice} ->
-            case file:write(IoDevice, Bin) of
-                ok ->
-                    {ok, SRef};
-                {error, Reason} ->
-                    lagger:error("Couldn't write data for ID: ~p with reason: ~p", [Id, Reason]),
-                    {error, Reason}
-            end;
+            put(SRef#sref{iodevice=IoDevice}, Id, {stream, Bin});
         {error, Reason} ->
-            lager:error("Can't open the file ~p for writing: ~p for blob Id: ~p", [Filename, Reason, Id]),
             {error, Reason}
     end;
-put(_Ref, _Id, _Chunk) ->
-    {error, not_yet_supported}.
+put(#sref{iodevice=IoDevice}=SRef, _Id, {stream, Bin}) when is_binary(Bin) ->
+    case file:write(IoDevice, Bin) of
+        ok ->
+            {ok, SRef};
+        {error, Reason} ->
+            {error, Reason}
+    end;
+put(#sref{iodevice=undefined}=_SRef, _Id, {stream, done}) ->
+    {error, already_done};
+put(#sref{iodevice=IoDevice}=SRef, _Id, {stream, done}) ->
+    file:close(IoDevice),
+    {ok, SRef#sref{iodevice=undefined}};
+put(_SRed, _Id, _) ->
+    {error, not_supported}.
 
 get(#sref{config=Config}=SRef, Id, []) ->
     RepoHome = Config#config.repo_home,
@@ -144,9 +152,10 @@ foldl(#sref{config=Config}=_SRef, Func, InitState, _Options) ->
 foreach(SRef, Func) ->
     FoldingFun = fun(X, _) ->
       Func(X),
-      ok
+      []
     end,
-    foldl(SRef, FoldingFun, ok, []).
+    foldl(SRef, FoldingFun, [], []),
+    ok.
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
