@@ -111,14 +111,19 @@ delete(#sref{config=Config}=SRef, Id) ->
             {error, Reason}
     end.
 
-all(#sref{config=Config}=_SRef) ->
+all(SRef) ->
+    Func = fun(X, Acc) -> [X|Acc] end,
+    foldl(SRef, Func, [], []).
+
+% TODO missing Options support
+foldl(#sref{config=Config}=_SRef, Func, InitState, _Options) ->
     RepoHome = Config#config.repo_home,
 
     ProcessFilename = fun(Filename, Acc) ->
         Elements = string:tokens(Filename, "/"),
         Length = length(Elements),
         Id = list_to_binary(lists:nth(Length - 1, Elements) ++ lists:nth(Length, Elements)),
-        [Id|Acc]
+        Func(Id, Acc)
     end,
 
     Value = filelib:fold_files(
@@ -126,7 +131,7 @@ all(#sref{config=Config}=_SRef) ->
         ".+",
         true,
         ProcessFilename,
-        []
+        InitState
     ),
 
     case Value of
@@ -136,11 +141,12 @@ all(#sref{config=Config}=_SRef) ->
             {error, BadValue}
     end.
 
-foldl(_SRef, _Func, _InitState, _Options) ->
-    {error, not_yet_supported}.
-
-foreach(_SRef, _Func) ->
-    {error, not_yet_supported}.
+foreach(SRef, Func) ->
+    FoldingFun = fun(X, _) ->
+      Func(X),
+      ok
+    end,
+    foldl(SRef, FoldingFun, ok, []).
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
