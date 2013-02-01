@@ -9,7 +9,7 @@
 
 -export([list_resources/0]).
 -export([open/1, open/2, close/1]).
--export([put/3, get/2, get/3, delete/2, enumerate/1, foldl/3, foldl/4, foreach/2]).
+-export([put/3, get/2, get/3, delete/2, all/1, foldl/3, foldl/4, foreach/2]).
 
 list_resources() ->
     coffer_resource:list().
@@ -35,8 +35,8 @@ get(#ref{backend=Backend, sref=SRef}=_Ref, Id, Options) ->
 delete(#ref{backend=Backend, sref=SRef}=_Ref, Id) ->
     Backend:delete(SRef, Id).
 
-enumerate(#ref{backend=Backend, sref=SRef}=_Ref) ->
-    Backend:enumerate(SRef).
+all(#ref{backend=Backend, sref=SRef}=_Ref) ->
+    Backend:all(SRef).
 
 foldl(Ref, Func, InitState) ->
     foldl(Ref, Func, InitState, []).
