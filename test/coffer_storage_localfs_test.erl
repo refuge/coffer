@@ -1,8 +1,9 @@
 -module(coffer_storage_localfs_test).
 -include_lib("eunit/include/eunit.hrl").
 
--define(setup(Storage, Options, F), {setup, fun() -> start(Storage, Options) end, fun stop/1, F}).
--define(title(Storage, Title), "[Storage " ++ atom_to_list(Storage) ++ "]: " ++ Title).
+-define(STORAGE, coffer_storage_localfs).
+-define(setup(Options, F), {setup, fun() -> start(Options) end, fun stop/1, F}).
+-define(title(Title), "[Storage " ++ atom_to_list(?STORAGE) ++ "]: " ++ Title).
 
 -define(TEST_REPO, "/tmp/coffer_storage_test").
 -define(TEST_REPO_BIN, <<"/tmp/coffer_storage_test">>).
@@ -13,56 +14,84 @@
 
 do_test_() ->
     [
-    test_given_storage(coffer_storage_localfs, [{repo_home, ?TEST_REPO}, {chunk_size, 4096}])
+    test_with_config([{repo_home, ?TEST_REPO}, {chunk_size, 4096}])
     ].
 
-test_given_storage(Storage, Options) ->
+test_with_config(Options) ->
     [
-     {?title(Storage, "Store and retrieve a binary."),
-     ?setup(Storage, Options, fun store_and_retrieve_a_binary/1)},
-     {?title(Storage, "Store a binary."),
-     ?setup(Storage, Options, fun store_a_binary/1)}
+     {?title("Store a binary."),
+     ?setup(Options, fun store_a_binary/1)},
+     {?title("Store a stream."),
+     ?setup(Options, fun store_a_stream/1)},
+     {?title("Store and retrieve a binary."),
+     ?setup(Options, fun store_and_retrieve_a_binary/1)}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%
 %%% SETUP FUNCTIONS %%%
 %%%%%%%%%%%%%%%%%%%%%%%
 
-start(Storage, Options) ->
-    {ok, State} = Storage:start(Options),
-    ok = Storage:init_storage(State),
-    {Storage, State}.
+start(Options) ->
+    {ok, State} = ?STORAGE:start(Options),
+    ok = ?STORAGE:init_storage(State),
+    {State}.
 
-stop({Storage, State}) ->
-    Storage:stop(State).
+stop({State}) ->
+    ?STORAGE:stop(State).
 
 %%%%%%%%%%%%%%%%%%%%
 %%% ACTUAL TESTS %%%
 %%%%%%%%%%%%%%%%%%%%
 
-store_and_retrieve_a_binary({Storage, State}) ->
-    {ok, SRef} = Storage:open(State, []),
-
+store_a_binary({State}) ->
     Content = <<"Hello World!">>,
     ContentHash = coffer_util:content_hash(Content),
-    Res = Storage:put(SRef, ContentHash, Content),
-    Res2 = Storage:get(SRef, ContentHash, []),
-
-    ok = Storage:close(SRef),
-    [?_assertEqual({ok, SRef}, Res), ?_assertEqual({ok, Content, SRef}, Res2)].
-
-store_a_binary({Storage, State}) ->
-    {ok, SRef} = Storage:open(State, []),
-
-    Content = <<"Hello World!">>,
-    ContentHash = coffer_util:content_hash(Content),
-    Res = Storage:put(SRef, ContentHash, Content),
-
     Filename = content_full_path(ContentHash),
-    IsFile = filelib:is_file(Filename),
 
-    ok = Storage:close(SRef),
-    [?_assertEqual({ok, SRef}, Res), ?_assertEqual(true, IsFile)].
+    {ok, SRef} = ?STORAGE:open(State, []),
+    NoFile = filelib:is_file(Filename),
+    Res = ?STORAGE:put(SRef, ContentHash, Content),
+    IsFile = filelib:is_file(Filename),
+    {ok, Binary} = file:read_file(Filename),
+    ok = ?STORAGE:close(SRef),
+
+    [?_assertEqual({ok, SRef}, Res),
+     ?_assertEqual(false, NoFile),
+     ?_assertEqual(true, IsFile),
+     ?_assertEqual(Content, Binary)].
+
+store_a_stream({State}) ->
+    Fragment = <<"Once upon a time">>,
+    Full = binary:list_to_bin([Fragment, Fragment, Fragment, Fragment]),
+    Id = <<"1234567890">>,
+    Filename = content_full_path(Id),
+
+    {ok, SRef0} = ?STORAGE:open(State, []),
+    NoFile = filelib:is_file(Filename),
+    {ok, SRef1} = ?STORAGE:put(SRef0, Id, {stream, Fragment}),
+    {ok, SRef2} = ?STORAGE:put(SRef1, Id, {stream, Fragment}),
+    {ok, SRef3} = ?STORAGE:put(SRef2, Id, {stream, Fragment}),
+    {ok, SRef4} = ?STORAGE:put(SRef3, Id, {stream, Fragment}),
+    {ok, SRef5} = ?STORAGE:put(SRef4, Id, {stream, done}),
+    IsFile = filelib:is_file(Filename),
+    {ok, Binary} = file:read_file(Filename),
+    ok = ?STORAGE:close(SRef5),
+
+    [?_assertEqual(false, NoFile),
+     ?_assertEqual(true, IsFile),
+     ?_assertEqual(Full, Binary)].
+
+store_and_retrieve_a_binary({State}) ->
+    Content = <<"Hello World!">>,
+    ContentHash = coffer_util:content_hash(Content),
+
+    {ok, SRef} = ?STORAGE:open(State, []),
+    Res = ?STORAGE:put(SRef, ContentHash, Content),
+    Res2 = ?STORAGE:get(SRef, ContentHash, []),
+    ok = ?STORAGE:close(SRef),
+
+    [?_assertEqual({ok, SRef}, Res),
+     ?_assertEqual({ok, Content, SRef}, Res2)].
 
 %%%%%%%%%%%%%%%%%%%%%%%%
 %%% HELPER FUNCTIONS %%%

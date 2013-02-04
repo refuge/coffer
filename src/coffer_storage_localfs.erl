@@ -90,7 +90,7 @@ put(#sref{config=Config, iodevice=undefined}=SRef, Id, {stream, Bin}) when is_bi
     RepoHome = Config#config.repo_home,
     Filename = content_full_location(RepoHome, Id),
     maybe_create_directory(RepoHome, content_directory(Id)),
-    case file:open(Filename, [write, binary]) of
+    case file:open(Filename, [exclusive, append, binary]) of
         {ok, IoDevice} ->
             put(SRef#sref{iodevice=IoDevice}, Id, {stream, Bin});
         {error, Reason} ->
