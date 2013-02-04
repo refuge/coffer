@@ -14,6 +14,7 @@
 %% ------------------------------------------------------------------
 
 -export([start/1, stop/1]).
+-export([init_storage/1]).
 -export([open/2, close/1]).
 -export([put/3, get/3, delete/2, all/1, foldl/4, foreach/2]).
 
@@ -34,7 +35,7 @@
     iodevice = undefined
 }).
 
-start(Properties) ->
+start(Properties) when is_list(Properties) ->
     % read the configuration
     RepoHome = proplists:get_value(repo_home, Properties, ?DEFAULT_REPO_HOME),
     ChunkSize = proplists:get_value(chunk_size, Properties, ?DEFAULT_CHUNK_SIZE),
@@ -50,7 +51,25 @@ stop(_) ->
     %% perhaps making sure every handle is actually closed?
     ok.
 
-open(#state{config=Config}=_State, Options) ->
+init_storage(#state{config=Config}=_State) ->
+    RepoHome = Config#config.repo_home,
+    case filelib:fold_files(
+        RepoHome,
+        ".*",
+        true,
+        fun(Filename, Acc) ->
+            case file:delete(Filename) of
+                ok -> Acc;
+                {error, Reason} -> [{error, Filename, Reason} | Acc]
+            end
+        end,
+        []
+    ) of
+        [] -> ok;
+        Other -> {error, Other}
+    end.
+
+open(#state{config=Config}=_State, Options) when is_list(Options) ->
     SRef = #sref{options=Options, config=Config},
     {ok, SRef}.
 
@@ -88,11 +107,9 @@ put(#sref{iodevice=undefined}=_SRef, _Id, {stream, done}) ->
     {error, already_done};
 put(#sref{iodevice=IoDevice}=SRef, _Id, {stream, done}) ->
     file:close(IoDevice),
-    {ok, SRef#sref{iodevice=undefined}};
-put(_SRed, _Id, _) ->
-    {error, not_supported}.
+    {ok, SRef#sref{iodevice=undefined}}.
 
-get(#sref{config=Config}=SRef, Id, []) ->
+get(#sref{config=Config}=SRef, Id, []) when is_binary(Id) ->
     RepoHome = Config#config.repo_home,
     Filename = content_full_location(RepoHome, Id),
     case filelib:is_file(Filename) of
@@ -106,7 +123,7 @@ get(#sref{config=Config}=SRef, Id, []) ->
                     {error, Reason}
             end
     end;
-get(#sref{config=Config, iodevice=undefined}=SRef, Id, [stream]) ->
+get(#sref{config=Config, iodevice=undefined}=SRef, Id, [stream]) when is_binary(Id) ->
     RepoHome = Config#config.repo_home,
     Filename = content_full_location(RepoHome, Id),
     case filelib:is_file(Filename) of
@@ -130,11 +147,9 @@ get(#sref{config=Config, iodevice=IoDevice}=SRef, _Id, [stream]) ->
             {chunk, done, SRef#sref{iodevice=undefined}};
         {error, Reason} ->
             {error, Reason}
-    end;
-get(_SRef, _Id, _Options) ->
-    {error, not_yet_supported}.
+    end.
 
-delete(#sref{config=Config}=SRef, Id) ->
+delete(#sref{config=Config}=SRef, Id) when is_binary(Id) ->
     RepoHome = Config#config.repo_home,
     Filename = content_full_location(RepoHome, Id),
     case file:delete(Filename) of
@@ -144,12 +159,11 @@ delete(#sref{config=Config}=SRef, Id) ->
             {error, Reason}
     end.
 
-all(SRef) ->
+all(#sref{}=SRef) ->
     Func = fun(X, Acc) -> [X|Acc] end,
     foldl(SRef, Func, [], []).
 
-% TODO missing Options support
-foldl(#sref{config=Config}=_SRef, Func, InitState, _Options) ->
+foldl(#sref{config=Config}=_SRef, Func, InitState, []) when is_function(Func, 2) ->
     RepoHome = Config#config.repo_home,
 
     ProcessFilename = fun(Filename, Acc) ->
@@ -172,9 +186,12 @@ foldl(#sref{config=Config}=_SRef, Func, InitState, _Options) ->
             {ok, List};
         BadValue ->
             {error, BadValue}
-    end.
+    end;
+% TODO missing Options support
+foldl(#sref{}=_SRef2, Func, _InitState, Options) when is_list(Options), is_function(Func, 2) ->
+    {error, not_yet_supported}.
 
-foreach(SRef, Func) ->
+foreach(#sref{}=SRef, Func) when is_function(Func, 1) ->
     FoldingFun = fun(X, _) ->
       Func(X),
       []

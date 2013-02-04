@@ -22,6 +22,10 @@
     ok
     | {error, Reason :: any()}.
 
+-callback init_storage(State :: record()) ->
+    ok
+    | {error, Reason :: any()}.
+
 -callback open(State :: any(), Options :: options()) ->
     {ok, Ref :: storage_ref()}
     | {error, Reason :: any()}.

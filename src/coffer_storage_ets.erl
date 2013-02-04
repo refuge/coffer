@@ -13,6 +13,7 @@
 %% ------------------------------------------------------------------
 
 -export([start/1, stop/1]).
+-export([init_storage/1]).
 -export([open/2, close/1]).
 -export([put/3, get/3, delete/2, all/1, foldl/4, foreach/2]).
 
@@ -32,6 +33,9 @@ start(Config) ->
 
 stop(Pid) ->
     gen_server:call(Pid, {stop}).
+
+init_storage(Pid) ->
+    gen_server:call(Pid, {init_storage}).
 
 open(Pid, _Options) ->
     {ok, Pid}.
@@ -75,6 +79,9 @@ init(Config) ->
 
 handle_call({stop}, _From, Tid) ->
     {stop, normal, ok, Tid};
+handle_call({init_storage}, _From, Tid) ->
+    ets:delete_all_objects(Tid),
+    {reply, ok, Tid};
 handle_call({put, Id, Bin}, _From, Tid) ->
     ets:insert(Tid, {Id, Bin}),
     {reply, {ok, self()}, Tid};

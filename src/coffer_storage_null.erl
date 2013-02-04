@@ -7,6 +7,7 @@
 -behaviour(coffer_storage).
 
 -export([start/1, stop/1]).
+-export([init_storage/1]).
 -export([open/2, close/1]).
 -export([put/3, get/3, delete/2, all/1, foldl/4, foreach/2]).
 
@@ -14,6 +15,9 @@ start(_Config) ->
     {ok, []}.
 
 stop(_) ->
+    ok.
+
+init_storage(_) ->
     ok.
 
 open(_InitState, _Options) ->
