@@ -61,7 +61,8 @@ basic_api_test({State}) ->
     {ok, SRef2} = ?STORAGE:put(SRef1, Id3, {stream, Fragment}),
     {ok, SRef3} = ?STORAGE:put(SRef2, Id3, {stream, Fragment}),
     {ok, SRef4} = ?STORAGE:put(SRef3, Id3, {stream, Fragment}),
-    {ok, _SRef5} = ?STORAGE:put(SRef4, Id3, {stream, done}),
+    {ok, SRef5} = ?STORAGE:put(SRef4, Id3, {stream, done}),
+    PutAlreadyDone = ?STORAGE:put(SRef5, Id3, {stream, done}),
 
     % grabing binary contents now
     {ok, Binary1, _} = ?STORAGE:get(SRef, Id1, []),
@@ -75,6 +76,49 @@ basic_api_test({State}) ->
     {chunk, Chunk3, SRef12} = ?STORAGE:get(SRef11, Id3, [stream]),
     {chunk, Chunk4, SRef13} = ?STORAGE:get(SRef12, Id3, [stream]),
     {chunk, done, _SRef14} = ?STORAGE:get(SRef13, Id3, [stream]),
+    % streaming a not valid content
+    StreamNotFound = ?STORAGE:get(SRef, <<"Alice in Wonderland">>, [stream]),
+
+    % trying to add them again
+    AlreadyThere1 = ?STORAGE:put(SRef, Id1, Content1),
+    AlreadyThere2 = ?STORAGE:put(SRef, Id2, Content2),
+    AlreadyThere3 = ?STORAGE:put(SRef, Id3, Content3),
+
+    % grabing unknown contents
+    UnknownContent = ?STORAGE:get(SRef, <<"what the hell">>, []),
+
+    {ok, List1} = ?STORAGE:all(SRef),
+
+    % basic folding
+    FoldingFun = fun(Id, Acc) ->
+        [{id, Id}|Acc]
+    end,
+    {ok, FoldingResult} = ?STORAGE:foldl(SRef, FoldingFun, [], []),
+
+    % testing foreach by writing in a file
+    % TODO perhaps better to use some kind of uuid filename
+    ForeachFilename = "/tmp/testing_coffer_foreach_feature",
+    case filelib:is_file(ForeachFilename) of
+        true ->
+            file:delete(ForeachFilename);
+        false ->
+            ok
+    end,
+    {ok, FoldTestFile} = file:open(ForeachFilename, [write, append, binary]),
+    ForeachFun = fun(Id) ->
+        Frag = binary:list_to_bin([<<"ID: ">>,Id]),
+        ok = file:write(FoldTestFile, Frag)
+    end,
+    ok = ?STORAGE:foreach(SRef, ForeachFun),
+    file:close(FoldTestFile),
+    {ok, ForeachContent} = file:read_file(ForeachFilename),
+    ExpectedForeachContent = binary:list_to_bin([<<"ID: ">>, Id3, <<"ID: ">>, Id2, <<"ID: ">>, Id1]),
+
+    % delete and list
+    {ok, _} = ?STORAGE:delete(SRef, Id2),
+    {ok, List2} = ?STORAGE:all(SRef),
+    ContentGone = ?STORAGE:get(SRef, Id2, []),
+    CantDeleteTwice = ?STORAGE:delete(SRef, Id2),
 
     ok = ?STORAGE:close(SRef),
 
@@ -82,10 +126,22 @@ basic_api_test({State}) ->
       ?_assertEqual(Content1, Binary1),
       ?_assertEqual(Content2, Binary2),
       ?_assertEqual(Content3, Binary3),
+      ?_assertEqual({error, already_done}, PutAlreadyDone),
       ?_assertEqual(Fragment, Chunk1),
       ?_assertEqual(Fragment, Chunk2),
       ?_assertEqual(Fragment, Chunk3),
-      ?_assertEqual(Fragment, Chunk4)
+      ?_assertEqual(Fragment, Chunk4),
+      ?_assertEqual({error, not_found}, StreamNotFound),
+      ?_assertEqual({error, already_exist}, AlreadyThere1),
+      ?_assertEqual({error, already_exist}, AlreadyThere2),
+      ?_assertEqual({error, already_exist}, AlreadyThere3),
+      ?_assertEqual({error, not_found}, UnknownContent),
+      ?_assertEqual([Id1, Id2, Id3], List1),
+      ?_assertEqual([{id, Id1}, {id, Id2}, {id, Id3}], FoldingResult),
+      ?_assertEqual(ExpectedForeachContent, ForeachContent),
+      ?_assertEqual([Id1, Id3], List2),
+      ?_assertEqual({error, not_found}, ContentGone),
+      ?_assertEqual({error, not_found}, CantDeleteTwice)
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%
