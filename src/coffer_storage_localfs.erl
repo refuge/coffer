@@ -89,12 +89,17 @@ put(SRef, Id, Bin) when is_binary(Bin) ->
 put(#sref{config=Config, iodevice=undefined}=SRef, Id, {stream, Bin}) when is_binary(Bin) ->
     RepoHome = Config#config.repo_home,
     Filename = content_full_location(RepoHome, Id),
-    maybe_create_directory(RepoHome, content_directory(Id)),
-    case file:open(Filename, [exclusive, append, binary]) of
-        {ok, IoDevice} ->
-            put(SRef#sref{iodevice=IoDevice}, Id, {stream, Bin});
-        {error, Reason} ->
-            {error, Reason}
+    case filelib:is_file(Filename) of
+        true ->
+            {error, already_exist};
+        false ->
+            maybe_create_directory(RepoHome, content_directory(Id)),
+            case file:open(Filename, [exclusive, append, binary]) of
+                {ok, IoDevice} ->
+                    put(SRef#sref{iodevice=IoDevice}, Id, {stream, Bin});
+                {error, Reason} ->
+                    {error, Reason}
+            end
     end;
 put(#sref{iodevice=IoDevice}=SRef, _Id, {stream, Bin}) when is_binary(Bin) ->
     case file:write(IoDevice, Bin) of
@@ -114,7 +119,7 @@ get(#sref{config=Config}=SRef, Id, []) when is_binary(Id) ->
     Filename = content_full_location(RepoHome, Id),
     case filelib:is_file(Filename) of
         false ->
-            {error, not_exist};
+            {error, not_found};
         true  ->
             case file:read_file(Filename) of
                 {ok, Binary} ->
@@ -128,7 +133,7 @@ get(#sref{config=Config, iodevice=undefined}=SRef, Id, [stream]) when is_binary(
     Filename = content_full_location(RepoHome, Id),
     case filelib:is_file(Filename) of
         false ->
-            {error, not_exist};
+            {error, not_found};
         true  ->
             case file:open(Filename, [read, binary]) of
                 {ok, IoDevice} ->
@@ -152,11 +157,16 @@ get(#sref{config=Config, iodevice=IoDevice}=SRef, _Id, [stream]) ->
 delete(#sref{config=Config}=SRef, Id) when is_binary(Id) ->
     RepoHome = Config#config.repo_home,
     Filename = content_full_location(RepoHome, Id),
-    case file:delete(Filename) of
-        ok ->
-            {ok, SRef};
-        {error, Reason} ->
-            {error, Reason}
+    case filelib:is_file(Filename) of
+        true ->
+            case file:delete(Filename) of
+                ok ->
+                    {ok, SRef};
+                {error, Reason} ->
+                    {error, Reason}
+            end;
+        false ->
+            {error, not_found}
     end.
 
 all(#sref{}=SRef) ->
@@ -216,22 +226,18 @@ maybe_init_repo(RepoHome) ->
 
 %%
 
--spec content_directory(Id :: binary()) -> string().
 content_directory(Id) ->
-    string:sub_string(binary_to_list(Id), 1,2).
+    binary:part(Id, {0,2}).
 
--spec content_filename(Id :: binary()) -> string().
 content_filename(Id) ->
-    string:sub_string(binary_to_list(Id), 3).
+    binary:part(Id, {2, byte_size(Id)-2}).
 
--spec content_location(Id :: binary()) -> string().
 content_location(Id) ->
-    content_directory(Id) ++ "/" ++ content_filename(Id).
+    binary:list_to_bin([content_directory(Id), <<"/">>, content_filename(Id)]).
 
--spec content_full_location(RepoHome :: string(), Id :: binary()) -> string().
 content_full_location(RepoHome, Id) ->
-    RepoHome ++ "/" ++ content_location(Id).
+    binary:list_to_bin([RepoHome, <<"/">>, content_location(Id)]).
 
 maybe_create_directory(RepoHome, Path) ->
-    FullPath = RepoHome ++ "/" ++ Path,
+    FullPath = binary:list_to_bin([RepoHome, <<"/">>, Path]),
     file:make_dir(FullPath).
