@@ -14,7 +14,8 @@
 
 do_test_() ->
     [
-    test_with_config([{repo_home, ?TEST_REPO}, {chunk_size, 4096}])
+    % testing with a very small chunk size to test streaming with get
+    test_with_config([{repo_home, ?TEST_REPO}, {chunk_size, 5}])
     ].
 
 test_with_config(Options) ->
@@ -24,7 +25,11 @@ test_with_config(Options) ->
      {?title("Store a stream."),
      ?setup(Options, fun store_a_stream/1)},
      {?title("Store and retrieve a binary."),
-     ?setup(Options, fun store_and_retrieve_a_binary/1)}
+     ?setup(Options, fun store_and_retrieve_a_binary/1)},
+     {?title("Get a binary."),
+     ?setup(Options, fun get_a_binary/1)},
+     {?title("Get a stream."),
+     ?setup(Options, fun get_a_stream/1)}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%
@@ -93,12 +98,55 @@ store_and_retrieve_a_binary({State}) ->
     [?_assertEqual({ok, SRef}, Res),
      ?_assertEqual({ok, Content, SRef}, Res2)].
 
+get_a_binary({State}) ->
+    Content = <<"Hello World!">>,
+    ContentHash = coffer_util:content_hash(Content),
+    Filename = content_full_path(ContentHash),
+
+    % making the file
+    file:make_dir(content_full_dir(ContentHash)),
+    file:write_file(Filename, Content),
+
+    {ok, SRef} = ?STORAGE:open(State, []),
+    {ok, ReadBinary, SRef2} = ?STORAGE:get(SRef, ContentHash, []),
+    ok = ?STORAGE:close(SRef2),
+
+    [?_assertEqual(Content, ReadBinary)].
+    
+get_a_stream({State}) ->
+    Fragment = <<"12345">>,
+    Content = binary:list_to_bin([Fragment, Fragment, Fragment, Fragment]),
+    ContentHash = <<"12345667890">>,
+    Filename = content_full_path(ContentHash),
+
+    % making the file
+    file:make_dir(content_full_dir(ContentHash)),
+    file:write_file(Filename, Content),
+
+    {ok, SRef0} = ?STORAGE:open(State, []),
+    {chunk, Data1, SRef1} = ?STORAGE:get(SRef0, ContentHash, [stream]),
+    {chunk, Data2, SRef2} = ?STORAGE:get(SRef1, ContentHash, [stream]),
+    {chunk, Data3, SRef3} = ?STORAGE:get(SRef2, ContentHash, [stream]),
+    {chunk, Data4, SRef4} = ?STORAGE:get(SRef3, ContentHash, [stream]),
+    {chunk, done, SRef5} = ?STORAGE:get(SRef4, ContentHash, [stream]),
+    ok = ?STORAGE:close(SRef5),
+
+    [
+     ?_assertEqual(Fragment, Data1),
+     ?_assertEqual(Fragment, Data2),
+     ?_assertEqual(Fragment, Data3),
+     ?_assertEqual(Fragment, Data4)
+    ].
+
 %%%%%%%%%%%%%%%%%%%%%%%%
 %%% HELPER FUNCTIONS %%%
 %%%%%%%%%%%%%%%%%%%%%%%%
 
 content_dir(Id) when is_binary(Id) ->
     binary:part(Id, {0, 2}).
+
+content_full_dir(Id) ->
+    binary:list_to_bin([?TEST_REPO_BIN, <<"/">>, content_dir(Id)]).
 
 content_filename(Id) when is_binary(Id) ->
     binary:part(Id, {2, byte_size(Id)-2}).
