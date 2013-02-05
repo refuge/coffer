@@ -20,16 +20,8 @@ do_test_() ->
 
 test_with_config(Options) ->
     [
-     {?title("Store a binary."),
-     ?setup(Options, fun store_a_binary/1)},
-     {?title("Store a stream."),
-     ?setup(Options, fun store_a_stream/1)},
-     {?title("Store and retrieve a binary."),
-     ?setup(Options, fun store_and_retrieve_a_binary/1)},
-     {?title("Get a binary."),
-     ?setup(Options, fun get_a_binary/1)},
-     {?title("Get a stream."),
-     ?setup(Options, fun get_a_stream/1)}
+     {?title("Basic API tests."),
+     ?setup(Options, fun basic_api_test/1)}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%
@@ -48,110 +40,56 @@ stop({State}) ->
 %%% ACTUAL TESTS %%%
 %%%%%%%%%%%%%%%%%%%%
 
-store_a_binary({State}) ->
-    Content = <<"Hello World!">>,
-    ContentHash = coffer_util:content_hash(Content),
-    Filename = content_full_path(ContentHash),
-
+basic_api_test({State}) ->
     {ok, SRef} = ?STORAGE:open(State, []),
-    NoFile = filelib:is_file(Filename),
-    Res = ?STORAGE:put(SRef, ContentHash, Content),
-    IsFile = filelib:is_file(Filename),
-    {ok, Binary} = file:read_file(Filename),
-    ok = ?STORAGE:close(SRef),
 
-    [?_assertEqual({ok, SRef}, Res),
-     ?_assertEqual(false, NoFile),
-     ?_assertEqual(true, IsFile),
-     ?_assertEqual(Content, Binary)].
+    Id1 = <<"1234567890">>,
+    Id2 = <<"0987654321">>,
+    Id3 = <<"af34228709">>,
 
-store_a_stream({State}) ->
-    Fragment = <<"Once upon a time">>,
-    Full = binary:list_to_bin([Fragment, Fragment, Fragment, Fragment]),
-    Id = <<"1234567890">>,
-    Filename = content_full_path(Id),
-
-    {ok, SRef0} = ?STORAGE:open(State, []),
-    NoFile = filelib:is_file(Filename),
-    {ok, SRef1} = ?STORAGE:put(SRef0, Id, {stream, Fragment}),
-    {ok, SRef2} = ?STORAGE:put(SRef1, Id, {stream, Fragment}),
-    {ok, SRef3} = ?STORAGE:put(SRef2, Id, {stream, Fragment}),
-    {ok, SRef4} = ?STORAGE:put(SRef3, Id, {stream, Fragment}),
-    {ok, SRef5} = ?STORAGE:put(SRef4, Id, {stream, done}),
-    IsFile = filelib:is_file(Filename),
-    {ok, Binary} = file:read_file(Filename),
-    ok = ?STORAGE:close(SRef5),
-
-    [?_assertEqual(false, NoFile),
-     ?_assertEqual(true, IsFile),
-     ?_assertEqual(Full, Binary)].
-
-store_and_retrieve_a_binary({State}) ->
-    Content = <<"Hello World!">>,
-    ContentHash = coffer_util:content_hash(Content),
-
-    {ok, SRef} = ?STORAGE:open(State, []),
-    Res = ?STORAGE:put(SRef, ContentHash, Content),
-    Res2 = ?STORAGE:get(SRef, ContentHash, []),
-    ok = ?STORAGE:close(SRef),
-
-    [?_assertEqual({ok, SRef}, Res),
-     ?_assertEqual({ok, Content, SRef}, Res2)].
-
-get_a_binary({State}) ->
-    Content = <<"Hello World!">>,
-    ContentHash = coffer_util:content_hash(Content),
-    Filename = content_full_path(ContentHash),
-
-    % making the file
-    file:make_dir(content_full_dir(ContentHash)),
-    file:write_file(Filename, Content),
-
-    {ok, SRef} = ?STORAGE:open(State, []),
-    {ok, ReadBinary, SRef2} = ?STORAGE:get(SRef, ContentHash, []),
-    ok = ?STORAGE:close(SRef2),
-
-    [?_assertEqual(Content, ReadBinary)].
-    
-get_a_stream({State}) ->
+    Content1 = <<"Hello World!">>,
+    Content2 = <<"Once upon a time">>,
     Fragment = <<"12345">>,
-    Content = binary:list_to_bin([Fragment, Fragment, Fragment, Fragment]),
-    ContentHash = <<"12345667890">>,
-    Filename = content_full_path(ContentHash),
+    Content3 = binary:list_to_bin([Fragment, Fragment, Fragment, Fragment]),
 
-    % making the file
-    file:make_dir(content_full_dir(ContentHash)),
-    file:write_file(Filename, Content),
+    % Storing some binary contents
+    ?STORAGE:put(SRef, Id1, Content1),
+    ?STORAGE:put(SRef, Id2, Content2),
+   
+    % Storing a streamed content
+    {ok, SRef1} = ?STORAGE:put(SRef, Id3, {stream, Fragment}),
+    {ok, SRef2} = ?STORAGE:put(SRef1, Id3, {stream, Fragment}),
+    {ok, SRef3} = ?STORAGE:put(SRef2, Id3, {stream, Fragment}),
+    {ok, SRef4} = ?STORAGE:put(SRef3, Id3, {stream, Fragment}),
+    {ok, _SRef5} = ?STORAGE:put(SRef4, Id3, {stream, done}),
 
-    {ok, SRef0} = ?STORAGE:open(State, []),
-    {chunk, Data1, SRef1} = ?STORAGE:get(SRef0, ContentHash, [stream]),
-    {chunk, Data2, SRef2} = ?STORAGE:get(SRef1, ContentHash, [stream]),
-    {chunk, Data3, SRef3} = ?STORAGE:get(SRef2, ContentHash, [stream]),
-    {chunk, Data4, SRef4} = ?STORAGE:get(SRef3, ContentHash, [stream]),
-    {chunk, done, SRef5} = ?STORAGE:get(SRef4, ContentHash, [stream]),
-    ok = ?STORAGE:close(SRef5),
+    % grabing binary contents now
+    {ok, Binary1, _} = ?STORAGE:get(SRef, Id1, []),
+    {ok, Binary2, _} = ?STORAGE:get(SRef, Id2, []),
+
+    % grabing the streamed content at once first
+    {ok, Binary3, _} = ?STORAGE:get(SRef, Id3, []),
+    % then let's stream it
+    {chunk, Chunk1, SRef10} = ?STORAGE:get(SRef, Id3, [stream]),
+    {chunk, Chunk2, SRef11} = ?STORAGE:get(SRef10, Id3, [stream]),
+    {chunk, Chunk3, SRef12} = ?STORAGE:get(SRef11, Id3, [stream]),
+    {chunk, Chunk4, SRef13} = ?STORAGE:get(SRef12, Id3, [stream]),
+    {chunk, done, _SRef14} = ?STORAGE:get(SRef13, Id3, [stream]),
+
+    ok = ?STORAGE:close(SRef),
 
     [
-     ?_assertEqual(Fragment, Data1),
-     ?_assertEqual(Fragment, Data2),
-     ?_assertEqual(Fragment, Data3),
-     ?_assertEqual(Fragment, Data4)
+      ?_assertEqual(Content1, Binary1),
+      ?_assertEqual(Content2, Binary2),
+      ?_assertEqual(Content3, Binary3),
+      ?_assertEqual(Fragment, Chunk1),
+      ?_assertEqual(Fragment, Chunk2),
+      ?_assertEqual(Fragment, Chunk3),
+      ?_assertEqual(Fragment, Chunk4)
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%
 %%% HELPER FUNCTIONS %%%
 %%%%%%%%%%%%%%%%%%%%%%%%
-
-content_dir(Id) when is_binary(Id) ->
-    binary:part(Id, {0, 2}).
-
-content_full_dir(Id) ->
-    binary:list_to_bin([?TEST_REPO_BIN, <<"/">>, content_dir(Id)]).
-
-content_filename(Id) when is_binary(Id) ->
-    binary:part(Id, {2, byte_size(Id)-2}).
-
-content_full_path(Id) ->
-    binary:list_to_bin([?TEST_REPO_BIN, <<"/">>, content_dir(Id), <<"/">>, content_filename(Id)]).
 
 % the end
