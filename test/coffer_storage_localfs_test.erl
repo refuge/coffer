@@ -43,8 +43,8 @@ stop({State}) ->
 basic_api_test({State}) ->
     {ok, SRef} = ?STORAGE:open(State, []),
 
-    Id1 = <<"1234567890">>,
-    Id2 = <<"0987654321">>,
+    Id1 = <<"0987654321">>,
+    Id2 = <<"1234567890">>,
     Id3 = <<"af34228709">>,
 
     Content1 = <<"Hello World!">>,
