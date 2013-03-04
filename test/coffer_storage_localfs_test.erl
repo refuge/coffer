@@ -95,24 +95,15 @@ basic_api_test({State}) ->
     end,
     {ok, FoldingResult} = ?STORAGE:foldl(SRef, FoldingFun, [], []),
 
-    % testing foreach by writing in a file
-    % TODO perhaps better to use some kind of uuid filename
-    ForeachFilename = "/tmp/testing_coffer_foreach_feature",
-    case filelib:is_file(ForeachFilename) of
-        true ->
-            file:delete(ForeachFilename);
-        false ->
-            ok
-    end,
-    {ok, FoldTestFile} = file:open(ForeachFilename, [write, append, binary]),
+    % testing foreach by inserting entries in an ets
+    Tid = ets:new(coffer_storage_test_ets, [set]),
     ForeachFun = fun(Id) ->
-        Frag = binary:list_to_bin([<<"ID: ">>,Id]),
-        ok = file:write(FoldTestFile, Frag)
+        ets:insert(Tid, {Id, Id})
     end,
     ok = ?STORAGE:foreach(SRef, ForeachFun),
-    file:close(FoldTestFile),
-    {ok, ForeachContent} = file:read_file(ForeachFilename),
-    ExpectedForeachContent = binary:list_to_bin([<<"ID: ">>, Id3, <<"ID: ">>, Id2, <<"ID: ">>, Id1]),
+    Id1PresentInForeachEts = ets:member(Tid, Id1),
+    Id2PresentInForeachEts = ets:member(Tid, Id2),
+    Id3PresentInForeachEts = ets:member(Tid, Id3),
 
     % delete and list
     {ok, _} = ?STORAGE:delete(SRef, Id2),
@@ -136,10 +127,17 @@ basic_api_test({State}) ->
       ?_assertEqual({error, already_exist}, AlreadyThere2),
       ?_assertEqual({error, already_exist}, AlreadyThere3),
       ?_assertEqual({error, not_found}, UnknownContent),
-      ?_assertEqual([Id1, Id2, Id3], List1),
-      ?_assertEqual([{id, Id1}, {id, Id2}, {id, Id3}], FoldingResult),
-      ?_assertEqual(ExpectedForeachContent, ForeachContent),
-      ?_assertEqual([Id1, Id3], List2),
+      ?_assertEqual(true, lists:member(Id1, List1)),
+      ?_assertEqual(true, lists:member(Id2, List1)),
+      ?_assertEqual(true, lists:member(Id3, List1)),
+      ?_assertEqual(true, lists:member({id, Id1}, FoldingResult)),
+      ?_assertEqual(true, lists:member({id, Id2}, FoldingResult)),
+      ?_assertEqual(true, lists:member({id, Id3}, FoldingResult)),
+      ?_assertEqual(true, Id1PresentInForeachEts),
+      ?_assertEqual(true, Id2PresentInForeachEts),
+      ?_assertEqual(true, Id3PresentInForeachEts),
+      ?_assertEqual(true, lists:member(Id1, List2)),
+      ?_assertEqual(true, lists:member(Id3, List2)),
       ?_assertEqual({error, not_found}, ContentGone),
       ?_assertEqual({error, not_found}, CantDeleteTwice)
     ].
