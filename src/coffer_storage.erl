@@ -5,32 +5,34 @@
 
 -module(coffer_storage).
 
+%%
+%% Describes storage API
+%% ---------------------
+%%
+%% Each storage implementation must at least implements those functions.
+%%
+
 %% Types
 
 -type blob_id() :: binary().
 -type options() :: list().
--type storage_ref() :: record().
 -type chunk() :: binary() | {stream, Bin :: binary()} | {stream, done}.
 
 %% callbacks
 
 -callback start(Config :: list()) ->
-    {ok, InitState :: any()}
+    {ok, Pid :: pid()}
     | {error, Reason :: any()}.
 
--callback stop(State :: record()) ->
+-callback stop(Pid :: pid()) ->
     ok
     | {error, Reason :: any()}.
 
--callback init_storage(State :: record()) ->
-    ok
+-callback open(Pid :: pid())) ->
+    {ok, Ref :: ref()}
     | {error, Reason :: any()}.
 
--callback open(State :: any(), Options :: options()) ->
-    {ok, Ref :: storage_ref()}
-    | {error, Reason :: any()}.
-
--callback close(Ref :: record()) ->
+-callback close(Pid :: pid(), Ref :: ref()) ->
     ok
     | {error, Reason :: any()}.
 

@@ -16,7 +16,7 @@
 -export([start_link/1]).
 -export([list/0]).
 -export([add/3, remove/1]).
--export([open/2, close/1]).
+-export([open/1, close/1]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
@@ -41,8 +41,8 @@ add(ResourceName, Backend, Config) ->
 remove(ResourceName) ->
     gen_server:call(?MODULE, {remove, ResourceName}).
 
-open(ResourceName, Options) ->
-    gen_server:call(?MODULE, {open, ResourceName, Options}).
+open(ResourceName) ->
+    gen_server:call(?MODULE, {open, ResourceName}).
 
 close(Ref) ->
     gen_server:call(?MODULE, {close, Ref}).
@@ -100,12 +100,12 @@ handle_call({add, ResourceName, Backend, Config}, _From, State) ->
 handle_call({remove, ResourceName}, _From, State) ->
     {Reply, NewState} = do_remove_resource(ResourceName, State),
     {reply, Reply, NewState};
-handle_call({open, ResourceName, Options}, _From, #state{resources=Resources}=State) ->
+handle_call({open, ResourceName}, _From, #state{resources=Resources}=State) ->
     case proplists:get_value(ResourceName, Resources) of
         undefined ->
             {reply, {error, not_such_resource}, State};
         #resource{backend=Backend, init=InitState} ->
-            Reply = case Backend:open(InitState, Options) of
+            Reply = case Backend:open(InitState) of
                 {ok, SRef} ->
                     {ok, #ref{backend=Backend, sref=SRef}};
                 {error, Reason} ->
