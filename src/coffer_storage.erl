@@ -28,37 +28,37 @@
     ok
     | {error, Reason :: any()}.
 
--callback open(Pid :: pid())) ->
-    {ok, Ref :: ref()}
-    | {error, Reason :: any()}.
-
--callback close(Pid :: pid(), Ref :: ref()) ->
+-callback open(Pid :: pid()) ->
     ok
     | {error, Reason :: any()}.
 
--callback put(Ref :: storage_ref(), Id :: blob_id(), Chunk :: chunk()) ->
-    {ok, Ref1 :: record()}
+-callback close(Pid :: pid(), Ref :: any()) ->
+    ok
     | {error, Reason :: any()}.
 
--callback get(Ref :: storage_ref(), Id :: blob_id(), Options :: options()) ->
-    {ok, Data :: binary(), Ref1 :: storage_ref()}      % in memory
-    | {chunk, Data :: binary(), Ref1 :: storage_ref()} % with Options = [stream]
-    | {chunk, done, Ref1 :: storage_ref()}  % with Options = [stream]
+-callback put(Pid :: pid(), Id :: blob_id(), Chunk :: chunk()) ->
+    ok
     | {error, Reason :: any()}.
 
--callback delete(Ref :: storage_ref(), Id :: blob_id()) ->
-    {ok, Ref1 :: storage_ref()}
+-callback get(Pid :: pid(), Id :: blob_id(), Options :: options()) ->
+    {ok, Data :: binary()}      % in memory
+    | {chunk, Data :: binary()} % with Options = [stream]
+    | {chunk, done}  % with Options = [stream]
     | {error, Reason :: any()}.
 
--callback all(Ref :: storage_ref()) ->
+-callback delete(Pid :: pid(), Id :: blob_id()) ->
+    ok
+    | {error, Reason :: any()}.
+
+-callback all(Pid :: pid()) ->
     {ok, List :: list()}
     | {error, Reason :: any()}.
 
--callback foldl(Ref :: storage_ref(), Func :: fun((Id :: blob_id(), Acc :: any()) -> Final :: any()), Initstate :: any(), Options :: options()) ->
+-callback foldl(Pid :: pid(), Func :: fun((Id :: blob_id(), Acc :: any()) -> Final :: any()), Initstate :: any(), Options :: options()) ->
     {ok, Final :: any()}
     | {error, Reason :: any()}.
 
--callback foreach(Ref :: storage_ref(), Func :: fun((Id :: blob_id()) -> Final :: any())) ->
+-callback foreach(Pid :: pid(), Func :: fun((Id :: blob_id()) -> Final :: any())) ->
     ok
     | {error, Reason :: any()}.
 

@@ -5,4 +5,4 @@
 -type blob_id() :: binary().
 -type data() :: binary().
 
--record(ref, {backend, sref, active=true}).
+-record(ref, {backend, pid, active=true}).

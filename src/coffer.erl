@@ -8,7 +8,7 @@
 -include_lib("coffer/includes/coffer.hrl").
 
 -export([start/0, stop/0]).
--export([list_resources/0, add_resource/3, remove_resource/1]).
+-export([list_storages/0, add_storage/3, remove_storage/1, get_storage/1]).
 -export([open/1, close/1]).
 -export([put/3, get/2, get/3, delete/2, all/1, foldl/3, foldl/4, foreach/2]).
 
@@ -25,46 +25,49 @@ start() ->
 stop() ->
     application:stop(coffer).
 
-% --- Resource API ---
+% --- storage API ---
 
-list_resources() ->
-    coffer_resource:list().
+list_storages() ->
+    coffer_server:list().
 
-add_resource(Name, Backend, Config) ->
-    coffer_resource:add(Name, Backend, Config).
+add_storage(Name, Backend, Config) ->
+    coffer_server:add(Name, Backend, Config).
 
-remove_resource(Name) ->
-    coffer_resource:remove(Name).
+remove_storage(Name) ->
+    coffer_server:remove(Name).
+
+get_storage(Name) ->
+    coffer_server:get(Name).
 
 % --- Storage API ---
 
-open(ResourceName) ->
-    coffer_resource:open(ResourceName).
+open(Pid) ->
+    gen_server:call(Pid, {open}).
 
 close(Pid) ->
-    coffer_resource:close(Pid).
+    gen_server:call(Pid, {close}).
 
-put(#ref{backend=Backend, sref=SRef}=_Ref, Id, Chunk) ->
-    Backend:put(SRef, Id, Chunk).
+put(Pid, Id, Chunk) ->
+    gen_server:call(Pid, {put, Id, Chunk}).
 
-get(Ref, Id) ->
-    get(Ref, Id, []).
+get(Pid, Id) ->
+    gen_server:call(Pid, {get, Id, []}).
 
-get(#ref{backend=Backend, sref=SRef}=_Ref, Id, Options) ->
-    Backend:get(SRef, Id, Options).
+get(Pid, Id, Options) ->
+    gen_server:call(Pid, {get, Id, Options}).
 
-delete(#ref{backend=Backend, sref=SRef}=_Ref, Id) ->
-    Backend:delete(SRef, Id).
+delete(Pid, Id) ->
+    gen_server:call(Pid, {delete, Id}).
 
-all(#ref{backend=Backend, sref=SRef}=_Ref) ->
-    Backend:all(SRef).
+all(Pid) ->
+    gen_server:call(Pid, {all, Pid}).
 
-foldl(Ref, Func, InitState) ->
-    foldl(Ref, Func, InitState, []).
+foldl(Pid, Func, InitState) ->
+    gen_server:call(Pid, {foldl, Func, InitState, []}).
 
-foldl(#ref{backend=Backend, sref=SRef}=_Ref, Func, InitState, Options) ->
-    Backend:foldl(SRef, Func, InitState, Options).
+foldl(Pid, Func, InitState, Options) ->
+    gen_server:call(Pid, {foldl, Func, InitState, Options}).
 
-foreach(#ref{backend=Backend, sref=SRef}=_Ref, Func) ->
-    Backend:foreach(SRef, Func).
+foreach(Pid, Func) ->
+    gen_server:call(Pid, {foreach, Func}).
 

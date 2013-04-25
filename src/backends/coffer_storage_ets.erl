@@ -13,8 +13,7 @@
 %% ------------------------------------------------------------------
 
 -export([start/1, stop/1]).
--export([init_storage/1]).
--export([open/2, close/1]).
+-export([open/1, close/2]).
 -export([put/3, get/3, delete/2, all/1, foldl/4, foreach/2]).
 
 %% ------------------------------------------------------------------
@@ -34,18 +33,15 @@ start(Config) ->
 stop(Pid) ->
     gen_server:call(Pid, {stop}).
 
-init_storage(Pid) ->
-    gen_server:call(Pid, {init_storage}).
-
-open(Pid, _Options) ->
+open(Pid) ->
     {ok, Pid}.
 
-close(_Pid) ->
+close(_Pid, _Ref) ->
     ok.
 
 put(Pid, Id, Bin) when is_binary(Bin) ->
     gen_server:call(Pid, {put, Id, Bin});
-put(_Ref, _Id, _Chunk) ->
+put(_Pid, _Id, _Chunk) ->
     {error, not_supported}.
 
 get(Pid, Id, Options) ->
