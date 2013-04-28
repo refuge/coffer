@@ -11,3 +11,4 @@ doc/edoc-info
 t/*.beam
 examples/*.beam
 .eunit/*
+log
