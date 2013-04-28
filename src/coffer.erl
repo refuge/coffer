@@ -60,7 +60,7 @@ delete(Pid, Id) ->
     gen_server:call(Pid, {delete, Id}).
 
 all(Pid) ->
-    gen_server:call(Pid, {all, Pid}).
+    gen_server:call(Pid, {all}).
 
 foldl(Pid, Func, InitState) ->
     gen_server:call(Pid, {foldl, Func, InitState, []}).

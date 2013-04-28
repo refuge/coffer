@@ -28,8 +28,8 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-    ResourceManager = ?CHILD(coffer_resource, [[]]),
+    CofferServer = ?CHILD(coffer_server, [[]]),
 
-    Children = [ResourceManager],
+    Children = [CofferServer],
     RestartStrategy = {one_for_one, 1, 60},
     {ok, { RestartStrategy, Children } }.
