@@ -131,6 +131,8 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
+do_add_storage(StorageName, Backend, Config, State) when is_list(StorageName) ->
+    do_add_storage(iolist_to_binary(StorageName), Backend, Config, State);
 do_add_storage(StorageName, Backend, Config, #state{storages=Storages}=State) ->
     case proplists:get_value(StorageName, Storages) of
         undefined ->
