@@ -24,11 +24,11 @@
 
 % INIT/STOP
 
--callback do_start(Config :: list()) ->
+-callback start_storage(Config :: list()) ->
     {ok, State :: any()}
     | {error, Reason :: any()}.
 
--callback do_stop(State :: any()) ->
+-callback stop_storage(State :: any()) ->
     ok
     | {error, Reason :: any()}.
 
@@ -36,29 +36,29 @@
 % SESSION HANDLING
 % TODO still some refinement to do here I think
 
--callback do_open(State :: any()) ->
+-callback handle_open(State :: any()) ->
     {ok, NewState :: any()}
     | {error, Reason :: any()}.
 
--callback do_close(State :: any()) ->
+-callback handle_close(State :: any()) ->
     {ok, NewState :: any()}
     | {error, Reason :: any()}.
 
 
 % CHANGE/ERASE A BLOB
 
--callback do_put(State :: any(), Id :: blob_id(), Chunk :: chunk()) ->
+-callback handle_put(State :: any(), Id :: blob_id(), Chunk :: chunk()) ->
     {ok, NewState :: any()}
     | {error, Reason :: any()}.
 
--callback do_delete(State :: any(), Id :: blob_id()) ->
+-callback handle_delete(State :: any(), Id :: blob_id()) ->
     {ok, NewState :: any()}
     | {error, Reason :: any()}.
 
 
 % GET BLOB
 
--callback do_get(State :: any(), Id :: blob_id(), Options :: options()) ->
+-callback handle_get(State :: any(), Id :: blob_id(), Options :: options()) ->
     {ok, Data :: binary()}      % in memory
     | {chunk, Data :: binary()} % with Options = [stream]
     | {chunk, done}  % with Options = [stream]
@@ -73,17 +73,17 @@
 % all is a special case of foldl and can be
 % handled by the coffer_storage behaviour
 % for all storage (to discuss...)
--callback do_all(State :: any()) ->
+-callback handle_all(State :: any()) ->
     {ok, List :: list()}
     | {error, Reason :: any()}.
 
--callback do_foldl(State :: any(), Func :: fun((Id :: blob_id(), Acc :: any()) -> Final :: any()), Initstate :: any(), Options :: options()) ->
+-callback handle_foldl(State :: any(), Func :: fun((Id :: blob_id(), Acc :: any()) -> Final :: any()), Initstate :: any(), Options :: options()) ->
     {ok, Final :: any()}
     | {error, Reason :: any()}.
 
 % TODO foreach is also a special case of foldl without taking care of the final result
 % (to discuss)
--callback do_foreach(State :: any(), Func :: fun((Id :: blob_id()) -> Final :: any())) ->
+-callback handle_foreach(State :: any(), Func :: fun((Id :: blob_id()) -> Final :: any())) ->
     ok
     | {error, Reason :: any()}.
 
@@ -147,7 +147,7 @@ foreach(Pid, Func) ->
 }).
 
 init([GivenBackend, GivenConfig]) ->
-    case GivenBackend:do_start(GivenConfig) of
+    case GivenBackend:start_storage(GivenConfig) of
         {ok, State} ->
             SS = #ss{backend=GivenBackend, config=GivenConfig, state=State},
             {ok, SS};
@@ -156,7 +156,7 @@ init([GivenBackend, GivenConfig]) ->
     end.
 
 handle_call({stop}, _From, #ss{backend=Backend, state=State}=SS) ->
-    case Backend:do_stop(State) of
+    case Backend:stop_storage(State) of
         ok ->
             {stop, normal, ok, SS};
         {error, Reason} ->
@@ -164,7 +164,7 @@ handle_call({stop}, _From, #ss{backend=Backend, state=State}=SS) ->
             {reply, {error, Reason}, SS}
     end;
 handle_call({open}, _From, #ss{backend=Backend, state=State}=SS) ->
-    case Backend:do_open(State) of
+    case Backend:handle_open(State) of
         {ok, NewState} ->
             UpdatedSS = SS#ss{state=NewState},
             {reply, ok, UpdatedSS};
@@ -172,7 +172,7 @@ handle_call({open}, _From, #ss{backend=Backend, state=State}=SS) ->
             {reply, {error, Reason}, SS}
     end;
 handle_call({close}, _From, #ss{backend=Backend, state=State}=SS) ->
-    case Backend:do_close(State) of
+    case Backend:handle_close(State) of
         {ok, NewState} ->
             UpdatedSS = SS#ss{state=NewState},
             {reply, ok, UpdatedSS};
@@ -181,7 +181,7 @@ handle_call({close}, _From, #ss{backend=Backend, state=State}=SS) ->
     end;
 handle_call({put, Id, Chunk}, _From, #ss{backend=Backend, state=State}=SS) ->
     % TODO need to put here a check to avoid 2 callers on the same Id
-    case Backend:do_put(State, Id, Chunk) of
+    case Backend:handle_put(State, Id, Chunk) of
         {ok, NewState} ->
             UpdatedSS = SS#ss{state=NewState},
             {reply, ok, UpdatedSS};
@@ -189,14 +189,14 @@ handle_call({put, Id, Chunk}, _From, #ss{backend=Backend, state=State}=SS) ->
             {reply, {error, Reason}, SS}
     end;
 handle_call({get, Id, Options}, _From, #ss{backend=Backend, state=State}=SS) ->
-    case Backend:do_get(State, Id, Options) of
+    case Backend:handle_get(State, Id, Options) of
         {error, Reason} ->
             {reply, {error, Reason}, SS};
         Reply ->
             {reply, Reply, SS}
     end;
 handle_call({delete, Id}, _From, #ss{backend=Backend, state=State}=SS) ->
-    case Backend:do_delete(State, Id) of
+    case Backend:handle_delete(State, Id) of
         {ok, NewState} ->
             UpdatedSS = SS#ss{state=NewState},
             {reply, ok, UpdatedSS};
@@ -204,21 +204,21 @@ handle_call({delete, Id}, _From, #ss{backend=Backend, state=State}=SS) ->
             {reply, {error, Reason}, SS}
     end;
 handle_call({all}, _From, #ss{backend=Backend, state=State}=SS) ->
-    case Backend:do_all(State) of
+    case Backend:handle_all(State) of
         {error, Reason} ->
             {reply, {error, Reason}, SS};
         Reply ->
             {reply, Reply, SS}
     end;
 handle_call({foldl, Func, InitState, Options}, _From, #ss{backend=Backend, state=State}=SS) ->
-    case Backend:do_foldl(State, Func, InitState, Options) of
+    case Backend:handle_foldl(State, Func, InitState, Options) of
         {error, Reason} ->
             {reply, {error, Reason}, SS};
         Reply ->
             {reply, Reply, SS}
     end;
 handle_call({foreach, Func}, _From, #ss{backend=Backend, state=State}=SS) ->
-    case Backend:do_all(State, Func) of
+    case Backend:handle_all(State, Func) of
         {error, Reason} ->
             {reply, {error, Reason}, SS};
         Reply ->
@@ -234,7 +234,7 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, #ss{backend=Backend, state=State}=_SS) ->
-    Backend:do_stop(State),
+    Backend:stop_storage(State),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

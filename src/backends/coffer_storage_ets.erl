@@ -10,16 +10,16 @@
 %% coffer_storage Function Exports
 %% ------------------------------------------------------------------
 
--export([do_start/1, do_stop/1]).
--export([do_open/1, do_close/1]).
--export([do_put/3, do_get/3, do_delete/2]).
--export([do_all/1, do_foldl/4, do_foreach/2]).
+-export([start_storage/1, stop_storage/1]).
+-export([handle_open/1, handle_close/1]).
+-export([handle_put/3, handle_get/3, handle_delete/2]).
+-export([handle_all/1, handle_foldl/4, handle_foreach/2]).
 
 %% ------------------------------------------------------------------
 %% coffer_storage Function Definitions
 %% ------------------------------------------------------------------
 
-do_start(Config) ->
+start_storage(Config) ->
     case Config of
         [{Name, Options}] ->
             Tid = ets:new(Name, Options),
@@ -29,24 +29,24 @@ do_start(Config) ->
             {error, wrong_config}
     end.    
 
-do_stop(Tid) ->
+stop_storage(Tid) ->
     ets:delete(Tid),
     ok.
 
-do_open(Tid) ->
+handle_open(Tid) ->
     {ok, Tid}.
 
-do_close(Tid) ->
+handle_close(Tid) ->
     {ok, Tid}.
 
-do_put(Tid, Id, Bin) when is_binary(Bin) ->
+handle_put(Tid, Id, Bin) when is_binary(Bin) ->
     ets:insert(Tid, {Id, Bin}),
     {ok, Tid};
-do_put(_Tid, _Id, _Chunk) ->
+handle_put(_Tid, _Id, _Chunk) ->
     % TODO to be done ;-)
     {error, not_supported}.
 
-do_get(Tid, Id, _Options) ->
+handle_get(Tid, Id, _Options) ->
     case ets:lookup(Tid, Id) of
         [{_Key, Value}] ->
             {ok, Value};
@@ -54,7 +54,7 @@ do_get(Tid, Id, _Options) ->
             {error, not_found}
     end.
 
-do_delete(Tid, Id) ->
+handle_delete(Tid, Id) ->
     case ets:lookup(Tid, Id) of
         [{_Key, _Value}] ->
             ets:delete(Tid, Id),
@@ -63,7 +63,7 @@ do_delete(Tid, Id) ->
             {error, not_found}
     end.
 
-do_all(Tid) ->
+handle_all(Tid) ->
     Value = ets:foldl(
         fun({Key, _}, Acc) ->
             [Key|Acc]
@@ -73,7 +73,7 @@ do_all(Tid) ->
     ),
     {ok, Value}.
 
-do_foldl(Tid, Func, InitState, _Options) ->
+handle_foldl(Tid, Func, InitState, _Options) ->
     Value = ets:foldl(
         Func,
         InitState,
@@ -81,7 +81,7 @@ do_foldl(Tid, Func, InitState, _Options) ->
     ),
     {ok, Value}.
 
-do_foreach(Tid, Func) ->
+handle_foreach(Tid, Func) ->
     ets:foldl(
         fun({Key, _}, _) ->
             Func(Key),
