@@ -5,65 +5,21 @@
 
 -module(coffer_storage_ets).
 -behaviour(coffer_storage).
--behaviour(gen_server).
--define(SERVER, ?MODULE).
 
 %% ------------------------------------------------------------------
-%% API Function Exports
+%% coffer_storage Function Exports
 %% ------------------------------------------------------------------
 
--export([start/1, stop/1]).
--export([open/1, close/2]).
--export([put/3, get/3, delete/2, all/1, foldl/4, foreach/2]).
+-export([do_start/1, do_stop/1]).
+-export([do_open/1, do_close/1]).
+-export([do_put/3, do_get/3, do_delete/2]).
+-export([do_all/1, do_foldl/4, do_foreach/2]).
 
 %% ------------------------------------------------------------------
-%% gen_server Function Exports
+%% coffer_storage Function Definitions
 %% ------------------------------------------------------------------
 
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2, code_change/3]).
-
-%% ------------------------------------------------------------------
-%% API Function Definitions
-%% ------------------------------------------------------------------
-
-start(Config) ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [Config], []).
-
-stop(Pid) ->
-    gen_server:call(Pid, {stop}).
-
-open(Pid) ->
-    {ok, Pid}.
-
-close(_Pid, _Ref) ->
-    ok.
-
-put(Pid, Id, Bin) when is_binary(Bin) ->
-    gen_server:call(Pid, {put, Id, Bin});
-put(_Pid, _Id, _Chunk) ->
-    {error, not_supported}.
-
-get(Pid, Id, Options) ->
-    gen_server:call(Pid, {get, Id, Options}).
-
-delete(Pid, Id) ->
-    gen_server:call(Pid, {delete, Id}).
-
-all(Pid) ->
-    gen_server:call(Pid, {all}).
-
-foldl(Pid, Func, InitState, Options) ->
-    gen_server:call(Pid, {foldl, Func, InitState, Options}).
-
-foreach(Pid, Func) ->
-    gen_server:call(Pid, {foreach, Func}).
-
-%% ------------------------------------------------------------------
-%% gen_server Function Definitions
-%% ------------------------------------------------------------------
-
-init(Config) ->
+do_start(Config) ->
     case Config of
         [{Name, Options}] ->
             Tid = ets:new(Name, Options),
@@ -71,23 +27,43 @@ init(Config) ->
         _ ->
             lager:error("Wrong config: ~p", [Config]),
             {error, wrong_config}
+    end.    
+
+do_stop(Tid) ->
+    ets:delete(Tid),
+    ok.
+
+do_open(Tid) ->
+    {ok, Tid}.
+
+do_close(Tid) ->
+    {ok, Tid}.
+
+do_put(Tid, Id, Bin) when is_binary(Bin) ->
+    ets:insert(Tid, {Id, Bin}),
+    {ok, Tid};
+do_put(_Tid, _Id, _Chunk) ->
+    % TODO to be done ;-)
+    {error, not_supported}.
+
+do_get(Tid, Id, _Options) ->
+    case ets:lookup(Tid, Id) of
+        [{_Key, Value}] ->
+            {ok, Value};
+        _ ->
+            {error, not_found}
     end.
 
-handle_call({stop}, _From, Tid) ->
-    {stop, normal, ok, Tid};
-handle_call({init_storage}, _From, Tid) ->
-    ets:delete_all_objects(Tid),
-    {reply, ok, Tid};
-handle_call({put, Id, Bin}, _From, Tid) ->
-    ets:insert(Tid, {Id, Bin}),
-    {reply, {ok, self()}, Tid};
-handle_call({get, Id, _Options}, _From, Tid) ->
-    [{_Key, Value}] = ets:lookup(Tid, Id),
-    {reply, {ok, Value, self()}, Tid};
-handle_call({delete, Id}, _From, Tid) ->
-    ets:delete(Tid, Id),
-    {reply, {ok, self()}, Tid};
-handle_call({all}, _From, Tid) ->
+do_delete(Tid, Id) ->
+    case ets:lookup(Tid, Id) of
+        [{_Key, _Value}] ->
+            ets:delete(Tid, Id),
+            {ok, Tid};
+        _ ->
+            {error, not_found}
+    end.
+
+do_all(Tid) ->
     Value = ets:foldl(
         fun({Key, _}, Acc) ->
             [Key|Acc]
@@ -95,16 +71,17 @@ handle_call({all}, _From, Tid) ->
         [],
         Tid
     ),
-    {reply, {ok, Value}, Tid};
-handle_call({foldl, Func, Initstate, _Options}, _From, Tid) ->
+    {ok, Value}.
+
+do_foldl(Tid, Func, InitState, _Options) ->
     Value = ets:foldl(
         Func,
-        Initstate,
+        InitState,
         Tid
     ),
-    {reply, {ok, Value}, Tid};
-handle_call({foreach, Func}, _From, Tid) ->
-    io:format("CAL foreach with func: ~p~n", [Func]),
+    {ok, Value}.
+
+do_foreach(Tid, Func) ->
     ets:foldl(
         fun({Key, _}, _) ->
             Func(Key),
@@ -113,22 +90,7 @@ handle_call({foreach, Func}, _From, Tid) ->
         [],
         Tid
     ),
-    {reply, ok, Tid};
-handle_call(_Request, _From, State) ->
-    {reply, ok, State}.
-
-handle_cast(_Msg, State) ->
-    {noreply, State}.
-
-handle_info(_Info, State) ->
-    {noreply, State}.
-
-terminate(_Reason, Tid) ->
-    ets:delete(Tid),
     ok.
-
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions

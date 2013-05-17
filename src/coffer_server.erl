@@ -137,7 +137,7 @@ do_add_storage(StorageName, Backend, Config, #state{storages=Storages}=State) ->
     case proplists:get_value(StorageName, Storages) of
         undefined ->
             lager:info("Starting storage: ~p with backend: ~p", [StorageName, Backend]),
-            case Backend:start(Config) of
+            case coffer_storage:start(Backend, Config) of
                 {ok, Pid} ->
                     lager:info("Storage ~p successfully started!", [StorageName]),
                     Storage = #storage{name=StorageName, backend=Backend, config=Config, pid=Pid},
@@ -157,9 +157,9 @@ do_add_storage(StorageName, Backend, Config, #state{storages=Storages}=State) ->
     case proplists:get_value(StorageName, Storages) of
         undefined ->
             {{error, not_found}, State};
-        #storage{backend=Backend}=_Storage ->
+        #storage{pid=Pid}=_Storage ->
             lager:info("Stopping storage ~p", [StorageName]),
-            case Backend:stop() of
+            case coffer_storage:stop(Pid) of
                 ok ->
                     lager:info("Storage ~p is now stopped", [StorageName]),
                     UpdatedStorages = proplists:delete(StorageName, Storages),

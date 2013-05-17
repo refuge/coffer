@@ -27,47 +27,52 @@ stop() ->
 
 % --- storage API ---
 
+-spec list_storages() -> list().
 list_storages() ->
     coffer_server:list().
 
+-spec add_storage(Name :: binary(), Backend :: atom(), Config :: list()) -> ok.
 add_storage(Name, Backend, Config) ->
     coffer_server:add(Name, Backend, Config).
 
+-spec remove_storage(Name :: binary()) -> ok.
 remove_storage(Name) ->
     coffer_server:remove(Name).
 
+-spec get_storage(Name :: binary()) -> pid().
 get_storage(Name) ->
     coffer_server:get(Name).
 
 % --- Storage API ---
 
-open(Pid) ->
-    gen_server:call(Pid, {open}).
+-spec open(StoragePid :: pid()) -> ok.
+open(StoragePid) ->
+    coffer_storage:open(StoragePid).
 
-close(Pid) ->
-    gen_server:call(Pid, {close}).
+close(StoragePid) ->
+    coffer_storage:close(StoragePid).
 
-put(Pid, Id, Chunk) ->
-    gen_server:call(Pid, {put, Id, Chunk}).
+put(StoragePid, Id, Chunk) ->
+    coffer_storage:put(StoragePid, Id, Chunk).
 
-get(Pid, Id) ->
-    gen_server:call(Pid, {get, Id, []}).
+get(StoragePid, Id) ->
+    get(StoragePid, Id, []).
 
-get(Pid, Id, Options) ->
-    gen_server:call(Pid, {get, Id, Options}).
+get(StoragePid, Id, Options) ->
+    coffer_storage:get(StoragePid, Id, Options).
 
-delete(Pid, Id) ->
-    gen_server:call(Pid, {delete, Id}).
+delete(StoragePid, Id) ->
+    coffer_storage:delete(StoragePid, Id).
 
-all(Pid) ->
-    gen_server:call(Pid, {all}).
+all(StoragePid) ->
+    coffer_storage:all(StoragePid).
 
-foldl(Pid, Func, InitState) ->
-    gen_server:call(Pid, {foldl, Func, InitState, []}).
+foldl(StoragePid, Func, InitState) ->
+    foldl(StoragePid, Func, InitState, []).
 
-foldl(Pid, Func, InitState, Options) ->
-    gen_server:call(Pid, {foldl, Func, InitState, Options}).
+foldl(StoragePid, Func, InitState, Options) ->
+    coffer_storage:foldl(StoragePid, Func, InitState, Options).
 
-foreach(Pid, Func) ->
-    gen_server:call(Pid, {foreach, Func}).
+foreach(StoragePid, Func) ->
+    coffer_storage:foreach(StoragePid, Func).
 
