@@ -77,22 +77,6 @@ handle_call({stop}, _From, #ss{backend=Backend, state=State}=SS) ->
             % TODO not too sure what to do here...
             {reply, {error, Reason}, SS}
     end;
-handle_call({open}, _From, #ss{backend=Backend, state=State}=SS) ->
-    case Backend:handle_open(State) of
-        {ok, NewState} ->
-            UpdatedSS = SS#ss{state=NewState},
-            {reply, ok, UpdatedSS};
-        {error, Reason} ->
-            {reply, {error, Reason}, SS}
-    end;
-handle_call({close}, _From, #ss{backend=Backend, state=State}=SS) ->
-    case Backend:handle_close(State) of
-        {ok, NewState} ->
-            UpdatedSS = SS#ss{state=NewState},
-            {reply, ok, UpdatedSS};
-        {error, Reason} ->
-            {reply, {error, Reason}, SS}
-    end;
 handle_call({put, Id, Chunk}, _From, #ss{backend=Backend, state=State}=SS) ->
     % TODO need to put here a check to avoid 2 callers on the same Id
     case Backend:handle_put(State, Id, Chunk) of
