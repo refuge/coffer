@@ -4,14 +4,13 @@
 %%% See the NOTICE for more information.
 
 -module(coffer_storage_ets).
--behaviour(coffer_storage).
+-behaviour(coffer_backend).
 
 %% ------------------------------------------------------------------
 %% coffer_storage Function Exports
 %% ------------------------------------------------------------------
 
--export([start_storage/1, stop_storage/1]).
--export([handle_open/1, handle_close/1]).
+-export([init/1, terminate/1]).
 -export([handle_put/3, handle_get/3, handle_delete/2]).
 -export([handle_all/1, handle_foldl/4, handle_foreach/2]).
 
@@ -19,7 +18,7 @@
 %% coffer_storage Function Definitions
 %% ------------------------------------------------------------------
 
-start_storage(Config) ->
+init(Config) ->
     case Config of
         [{Name, Options}] ->
             Tid = ets:new(Name, Options),
@@ -27,17 +26,11 @@ start_storage(Config) ->
         _ ->
             lager:error("Wrong config: ~p", [Config]),
             {error, wrong_config}
-    end.    
+    end.
 
-stop_storage(Tid) ->
+terminate(Tid) ->
     ets:delete(Tid),
     ok.
-
-handle_open(Tid) ->
-    {ok, Tid}.
-
-handle_close(Tid) ->
-    {ok, Tid}.
 
 handle_put(Tid, Id, Bin) when is_binary(Bin) ->
     ets:insert(Tid, {Id, Bin}),

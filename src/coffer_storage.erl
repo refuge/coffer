@@ -7,92 +7,11 @@
 
 -behaviour(gen_server).
 
-%%
-%% Describes storage API
-%% ---------------------
-%%
-%% Each storage implementation must at least implements those functions.
-%%
-
-%% Types
-
--type blob_id() :: binary().
--type options() :: list().
--type chunk() :: binary() | {stream, Bin :: binary()} | {stream, done}.
-
-%% callbacks -----------------------------------------------------------------
-
-% INIT/STOP
-
--callback start_storage(Config :: list()) ->
-    {ok, State :: any()}
-    | {error, Reason :: any()}.
-
--callback stop_storage(State :: any()) ->
-    ok
-    | {error, Reason :: any()}.
-
-
-% SESSION HANDLING
-% TODO still some refinement to do here I think
-
--callback handle_open(State :: any()) ->
-    {ok, NewState :: any()}
-    | {error, Reason :: any()}.
-
--callback handle_close(State :: any()) ->
-    {ok, NewState :: any()}
-    | {error, Reason :: any()}.
-
-
-% CHANGE/ERASE A BLOB
-
--callback handle_put(State :: any(), Id :: blob_id(), Chunk :: chunk()) ->
-    {ok, NewState :: any()}
-    | {error, Reason :: any()}.
-
--callback handle_delete(State :: any(), Id :: blob_id()) ->
-    {ok, NewState :: any()}
-    | {error, Reason :: any()}.
-
-
-% GET BLOB
-
--callback handle_get(State :: any(), Id :: blob_id(), Options :: options()) ->
-    {ok, Data :: binary()}      % in memory
-    | {chunk, Data :: binary()} % with Options = [stream]
-    | {chunk, done}  % with Options = [stream]
-    | {error, Reason :: any()}.
-
-
-% QUERY callbacks
-% those functions don't change anything by themselves
-% but merely iterate over the blobs
-
-% TODO we can remove this one from the storage
-% all is a special case of foldl and can be
-% handled by the coffer_storage behaviour
-% for all storage (to discuss...)
--callback handle_all(State :: any()) ->
-    {ok, List :: list()}
-    | {error, Reason :: any()}.
-
--callback handle_foldl(State :: any(), Func :: fun((Id :: blob_id(), Acc :: any()) -> Final :: any()), Initstate :: any(), Options :: options()) ->
-    {ok, Final :: any()}
-    | {error, Reason :: any()}.
-
-% TODO foreach is also a special case of foldl without taking care of the final result
-% (to discuss)
--callback handle_foreach(State :: any(), Func :: fun((Id :: blob_id()) -> Final :: any())) ->
-    ok
-    | {error, Reason :: any()}.
-
 %% ------------------------------------------------------------------
 %% API Function Exports
 %% ------------------------------------------------------------------
 
 -export([start/2, stop/1]).
--export([open/1, close/1]).
 -export([put/3, get/3, delete/2, all/1, foldl/4, foreach/2]).
 
 %% ------------------------------------------------------------------
@@ -110,13 +29,8 @@ start(Backend, Config) ->
     gen_server:start_link(?MODULE, [Backend, Config], []).
 
 stop(Pid) ->
-    gen_server:call(Pid, {stop}).
+    gen_server:call(Pid, stop).
 
-open(Pid) ->
-    gen_server:call(Pid, {open}).
-
-close(Pid) ->
-    gen_server:call(Pid, {close}).
 
 put(Pid, Id, Stuff) ->
     gen_server:call(Pid, {put, Id, Stuff}).
@@ -147,7 +61,7 @@ foreach(Pid, Func) ->
 }).
 
 init([GivenBackend, GivenConfig]) ->
-    case GivenBackend:start_storage(GivenConfig) of
+    case GivenBackend:init(GivenConfig) of
         {ok, State} ->
             SS = #ss{backend=GivenBackend, config=GivenConfig, state=State},
             {ok, SS};
@@ -156,7 +70,7 @@ init([GivenBackend, GivenConfig]) ->
     end.
 
 handle_call({stop}, _From, #ss{backend=Backend, state=State}=SS) ->
-    case Backend:stop_storage(State) of
+    case Backend:terminate(State) of
         ok ->
             {stop, normal, ok, SS};
         {error, Reason} ->

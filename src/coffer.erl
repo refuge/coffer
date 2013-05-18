@@ -9,7 +9,6 @@
 
 -export([start/0, stop/0]).
 -export([list_storages/0, add_storage/3, remove_storage/1, get_storage/1]).
--export([open/1, close/1]).
 -export([put/3, get/2, get/3, delete/2, all/1, foldl/3, foldl/4, foreach/2]).
 
 % --- Application ---
@@ -44,13 +43,6 @@ get_storage(Name) ->
     coffer_server:get(Name).
 
 % --- Storage API ---
-
--spec open(StoragePid :: pid()) -> ok.
-open(StoragePid) ->
-    coffer_storage:open(StoragePid).
-
-close(StoragePid) ->
-    coffer_storage:close(StoragePid).
 
 put(StoragePid, Id, Chunk) ->
     coffer_storage:put(StoragePid, Id, Chunk).
