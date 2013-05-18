@@ -5,8 +5,6 @@
 
 -module(coffer).
 
--include_lib("coffer/includes/coffer.hrl").
-
 -export([start/0, stop/0]).
 -export([list_storages/0, add_storage/3, remove_storage/1, get_storage/1]).
 -export([put/3, get/2, get/3, delete/2, all/1, foldl/3, foldl/4, foreach/2]).

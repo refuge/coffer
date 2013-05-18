@@ -7,7 +7,6 @@
 -behaviour(gen_server).
 -define(SERVER, ?MODULE).
 
--include_lib("coffer/includes/coffer.hrl").
 
 %% ------------------------------------------------------------------
 %% API Function Exports
@@ -63,7 +62,7 @@ get(StorageName) ->
 init([]) ->
     %
     % storages : [
-    %     { StorageName, Backend, Config } 
+    %     { StorageName, Backend, Config }
     % ]
     %
     StoragesConfig = case application:get_env(coffer, storages) of
