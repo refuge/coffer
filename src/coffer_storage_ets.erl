@@ -11,8 +11,12 @@
 %% ------------------------------------------------------------------
 
 -export([init/1, terminate/1]).
--export([handle_put/3, handle_get/3, handle_delete/2]).
+-export([new_receiver/2,
+         handle_get/3, handle_delete/2]).
 -export([handle_all/1, handle_foldl/4, handle_foreach/2]).
+
+
+-export([receive_loop/2]).
 
 %% ------------------------------------------------------------------
 %% coffer_storage Function Definitions
@@ -20,7 +24,8 @@
 
 init(Config) ->
     case Config of
-        [{Name, Options}] ->
+        [{Name, Options0}] ->
+            Options = [public, ordered_set | Options0],
             Tid = ets:new(Name, Options),
             {ok, Tid};
         _ ->
@@ -32,12 +37,43 @@ terminate(Tid) ->
     ets:delete(Tid),
     ok.
 
-handle_put(Tid, Id, Bin) when is_binary(Bin) ->
-    ets:insert(Tid, {Id, Bin}),
-    {ok, Tid};
-handle_put(_Tid, _Id, _Chunk) ->
-    % TODO to be done ;-)
-    {error, not_supported}.
+new_receiver(Tid, BlobRef) ->
+    case ets:lookup(Tid, BlobRef) of
+        [] ->
+            ReceiverPid = spawn_link(?MODULE, receive_loop, [Tid, BlobRef]),
+            {ok, {ReceiverPid, nil}, Tid};
+        [{BlobRef, Blob}|_] ->
+            S = size(Blob),
+            {error, {already_exists, BlobRef, S}, Tid}
+    end.
+
+receive_loop(Tid, BlobRef) ->
+    TmpBlobRef = << BlobRef/binary, ".tmp" >>,
+    Self = self(),
+    receive
+        {data, From, Bin, Config} ->
+            lager:info("Partial upload to ~p~n", [TmpBlobRef]),
+            case ets:lookup(Tid, TmpBlobRef) of
+                [] ->
+                    ets:insert(Tid, {TmpBlobRef, Bin});
+                [{TmpBlobRef, OldBin}] ->
+                    NewBin = << OldBin/binary, Bin/binary>>,
+                    ets:insert(Tid, {TmpBlobRef, NewBin})
+            end,
+            From ! {ack, Self, Config},
+            receive_loop(Tid, BlobRef);
+        {eob, From, _Config} ->
+            case ets:lookup(Tid, TmpBlobRef) of
+                [] ->
+                    From ! {error, not_found};
+                [{TmpBlobRef, Bin}] ->
+                    lager:info("End upload: rename ~p to ~p~n",
+                               [TmpBlobRef, BlobRef]),
+                    ets:insert(Tid, {BlobRef, Bin}),
+                    ets:delete(Tid, TmpBlobRef),
+                    From ! {ok, Self, size(Bin)}
+            end
+    end.
 
 handle_get(Tid, Id, _Options) ->
     case ets:lookup(Tid, Id) of

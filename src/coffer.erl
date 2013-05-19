@@ -7,7 +7,9 @@
 
 -export([start/0, stop/0]).
 -export([list_storages/0, add_storage/3, remove_storage/1, get_storage/1]).
--export([put/3, get/2, get/3, delete/2, all/1, foldl/3, foldl/4, foreach/2]).
+-export([new_upload/2,
+         upload/2, upload/3,
+         get/2, get/3, delete/2, all/1, foldl/3, foldl/4, foreach/2]).
 
 % --- Application ---
 
@@ -42,8 +44,38 @@ get_storage(Name) ->
 
 % --- Storage API ---
 
-put(StoragePid, Id, Chunk) ->
-    coffer_storage:put(StoragePid, Id, Chunk).
+new_upload(StoragePid, Id) ->
+    coffer_storage:new_upload(StoragePid, Id).
+
+upload({_Pid, _Conf}=Receiver, Bin) ->
+    upload(Receiver, Bin, infinity).
+
+upload({ReceiverPid, Config}, eob, Timeout) ->
+    ReceiverPid ! {eob, self(), Config},
+    receive
+        {ok, ReceiverPid, UploadedSize} ->
+            {ok, UploadedSize};
+        {error, Reason} ->
+            {error, Reason};
+        {'EXIT', ReceiverPid, Reason} ->
+            {error, Reason}
+    after Timeout ->
+        kill_receiver(ReceiverPid)
+    end;
+
+upload({ReceiverPid, Config}, Bin, Timeout) ->
+    ReceiverPid ! {data, self(), Bin, Config},
+    receive
+        {ack, ReceiverPid, NewConfig} ->
+            {ok, ReceiverPid, NewConfig};
+        {error, Reason} ->
+            {error, Reason};
+        {'EXIT', ReceiverPid, Reason} ->
+            {error, Reason}
+    after Timeout ->
+        kill_receiver(ReceiverPid)
+    end.
+
 
 get(StoragePid, Id) ->
     get(StoragePid, Id, []).
@@ -66,3 +98,19 @@ foldl(StoragePid, Func, InitState, Options) ->
 foreach(StoragePid, Func) ->
     coffer_storage:foreach(StoragePid, Func).
 
+%% ------------------------------------------------------------------
+%% Internal functions
+%% ------------------------------------------------------------------
+
+-spec kill_receiver(pid()) -> any() | {error, any()}.
+kill_receiver(Pid) ->
+    Monitor = erlang:monitor(process, Pid),
+    unlink(Pid), % or we'll kill ourself :O
+    exit(Pid, timeout),
+    receive
+        {partial, Pid, Size} ->
+            erlang:demonitor(Monitor, [flush]),
+            {partial, Size};
+        {'DOWN', _, process, Pid, Reason}  ->
+            {error, Reason}
+    end.

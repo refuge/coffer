@@ -12,7 +12,7 @@
 %% ------------------------------------------------------------------
 
 -export([start/2, stop/1]).
--export([put/3, get/3, delete/2, all/1, foldl/4, foreach/2]).
+-export([new_upload/2, get/3, delete/2, all/1, foldl/4, foreach/2]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
@@ -32,8 +32,8 @@ stop(Pid) ->
     gen_server:call(Pid, stop).
 
 
-put(Pid, Id, Stuff) ->
-    gen_server:call(Pid, {put, Id, Stuff}).
+new_upload(Pid, BlobRef) ->
+    gen_server:call(Pid, {new_upload, BlobRef}).
 
 get(Pid, Id, Options) ->
     gen_server:call(Pid, {get, Id, Options}).
@@ -77,14 +77,13 @@ handle_call({stop}, _From, #ss{backend=Backend, state=State}=SS) ->
             % TODO not too sure what to do here...
             {reply, {error, Reason}, SS}
     end;
-handle_call({put, Id, Chunk}, _From, #ss{backend=Backend, state=State}=SS) ->
-    % TODO need to put here a check to avoid 2 callers on the same Id
-    case Backend:handle_put(State, Id, Chunk) of
-        {ok, NewState} ->
-            UpdatedSS = SS#ss{state=NewState},
-            {reply, ok, UpdatedSS};
-        {error, Reason} ->
-            {reply, {error, Reason}, SS}
+handle_call({new_upload, BlobRef}, _From, #ss{backend=Backend,
+                                              state=State}=SS) ->
+    case Backend:new_receiver(State, BlobRef) of
+        {ok, {_ReceiverPid, _Config}=Receiver, NewState} ->
+            {reply, {ok, Receiver}, SS#ss{state=NewState}};
+        {error, Reason, NewState} ->
+            {reply, {error, Reason}, SS#ss{state=NewState}}
     end;
 handle_call({get, Id, Options}, _From, #ss{backend=Backend, state=State}=SS) ->
     case Backend:handle_get(State, Id, Options) of
@@ -132,7 +131,7 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, #ss{backend=Backend, state=State}=_SS) ->
-    Backend:stop_storage(State),
+    Backend:terminate(State),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

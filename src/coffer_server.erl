@@ -115,8 +115,8 @@ handle_info(_Info, State) ->
 
 terminate(_Reason, #state{storages=Storages}=_State) ->
     lists:foldl(
-        fun(#storage{backend=Backend}=_Storage, _Acc) ->
-            Backend:stop()
+        fun(#storage{pid=Pid}=_Storage, _Acc) ->
+            coffer_storage:stop(Pid)
         end,
         [],
         Storages

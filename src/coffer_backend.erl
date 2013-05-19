@@ -14,7 +14,6 @@
 
 -type blob_id() :: binary().
 -type options() :: list().
--type chunk() :: binary() | {stream, Bin :: binary()} | {stream, done}.
 
 %% callbacks -----------------------------------------------------------------
 
@@ -32,9 +31,9 @@
 
 % CHANGE/ERASE A BLOB
 
--callback handle_put(State :: any(), Id :: blob_id(), Chunk :: chunk()) ->
+-callback new_receiver(State :: any(), Id :: blob_id()) ->
     {ok, NewState :: any()}
-    | {error, Reason :: any()}.
+    | {error, Reason :: any(), NewState :: any()}.
 
 -callback handle_delete(State :: any(), Id :: blob_id()) ->
     {ok, NewState :: any()}
