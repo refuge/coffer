@@ -65,10 +65,11 @@ do_receive_loop(BlobRef, TmpBlobRef, Self, From, Tid) ->
             lager:info("Partial upload to ~p~n", [TmpBlobRef]),
             case ets:lookup(Tid, TmpBlobRef) of
                 [] ->
-                    ets:insert(Tid, {TmpBlobRef, Bin});
-                [{TmpBlobRef, OldBin}] ->
+                    ets:insert(Tid, {TmpBlobRef, {Bin, byte_size(Bin)}});
+                [{TmpBlobRef, {OldBin, _OldSize}}] ->
                     NewBin = << OldBin/binary, Bin/binary>>,
-                    ets:insert(Tid, {TmpBlobRef, NewBin})
+                    ets:insert(Tid, {TmpBlobRef, {NewBin,
+                                                  byte_size(NewBin)}})
             end,
             From ! {ack, Self, Config},
             do_receive_loop(BlobRef, TmpBlobRef, Self, From, Tid);
@@ -76,12 +77,12 @@ do_receive_loop(BlobRef, TmpBlobRef, Self, From, Tid) ->
             case ets:lookup(Tid, TmpBlobRef) of
                 [] ->
                     From ! {error, not_found};
-                [{TmpBlobRef, Bin}] ->
+                [{TmpBlobRef, {Bin, Size}}] ->
                     lager:info("End upload: rename ~p to ~p~n",
                                [TmpBlobRef, BlobRef]),
-                    ets:insert(Tid, {BlobRef, Bin}),
+                    ets:insert(Tid, {BlobRef, {Bin, Size}}),
                     ets:delete(Tid, TmpBlobRef),
-                    From ! {ok, Self, byte_size(Bin)}
+                    From ! {ok, Self, Size}
             end;
         {'DOWN', _, process, From, _} ->
            exit(normal)
@@ -99,7 +100,7 @@ new_stream({BlobRef, Window}, To, Tid) ->
 
 stream_loop(BlobRef, Window, To, Tid) ->
     MonRef = erlang:monitor(process, To),
-    [{BlobRef, Bin}] = ets:lookup(Tid, BlobRef),
+    [{BlobRef, {Bin, _Size}}] = ets:lookup(Tid, BlobRef),
     do_stream_loop(Bin, Window, To),
     erlang:demonitor(MonRef, [flush]).
 
