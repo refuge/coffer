@@ -43,11 +43,10 @@
 
 % GET BLOB
 
--callback handle_get(State :: any(), BlobRef :: blob_ref(), Options :: options()) ->
-    {ok, Data :: binary()}      % in memory
-    | {chunk, Data :: binary()} % with Options = [stream]
-    | {chunk, done}  % with Options = [stream]
-    | {error, Reason :: any()}.
+-callback new_stream({BlobRef :: blob_ref(), Window :: integer()}, To :: pid(),
+                State :: any()) ->
+    {ok, StreamPid :: pid()}
+    | {error, any()}.
 
 
 % QUERY callbacks

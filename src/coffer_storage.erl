@@ -12,7 +12,7 @@
 %% ------------------------------------------------------------------
 
 -export([start/2, stop/1]).
--export([new_upload/2, get/3, delete/2, all/1, foldl/4, foreach/2]).
+-export([new_upload/2, fetch_stream/2, delete/2, all/1, foldl/4, foreach/2]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
@@ -35,8 +35,8 @@ stop(Pid) ->
 new_upload(Pid, BlobRef) ->
     gen_server:call(Pid, {new_upload, BlobRef}).
 
-get(Pid, BlobRef, Options) ->
-    gen_server:call(Pid, {get, BlobRef, Options}).
+fetch_stream(Pid, {BlobRef, Window}) ->
+    gen_server:call(Pid, {fetch_stream, {BlobRef, Window}}).
 
 delete(Pid, BlobRef) ->
     gen_server:call(Pid, {delete, BlobRef}).
@@ -86,15 +86,17 @@ handle_call({new_upload, BlobRef}, {From, _}, #ss{backend=Backend,
         {error, Reason, NewState} ->
             {reply, {error, Reason}, SS#ss{state=NewState}}
     end;
-handle_call({get, BlobRef, Options}, _From, #ss{backend=Backend, state=State}=SS) ->
-    case Backend:handle_get(State, BlobRef, Options) of
-        {error, Reason} ->
-            {reply, {error, Reason}, SS};
-        Reply ->
-            {reply, Reply, SS}
+handle_call({fetch_stream, {BlobRef, Window}}, {From, _},
+            #ss{backend=Backend, state=State}=SS) ->
+
+    case Backend:new_stream({BlobRef, Window}, From, State) of
+        {ok, StreamPid, NewState} ->
+            {reply, {ok, StreamPid},  SS#ss{state=NewState}};
+        {error, Reason, NewState} ->
+            {reply, {error, Reason}, SS#ss{state=NewState}}
     end;
 handle_call({delete, BlobRef}, _From, #ss{backend=Backend, state=State}=SS) ->
-    case Backend:handle_delete(State, BlobRef) of
+    case Backend:delete(State, BlobRef) of
         {ok, NewState} ->
             UpdatedSS = SS#ss{state=NewState},
             {reply, ok, UpdatedSS};

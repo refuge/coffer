@@ -9,7 +9,10 @@
 -export([list_storages/0, add_storage/3, remove_storage/1, get_storage/1]).
 -export([new_upload/2,
          upload/2, upload/3,
-         get/2, get/3, delete/2, all/1, foldl/3, foldl/4, foreach/2]).
+         fetch_stream/2, fetch/1, fetch/2,
+         simple_fetch/2,
+         delete/2,
+         all/1, foldl/3, foldl/4, foreach/2]).
 
 % --- Application ---
 
@@ -77,11 +80,45 @@ upload({ReceiverPid, Config}, Bin, Timeout) ->
     end.
 
 
-get(StoragePid, BlobRef) ->
-    get(StoragePid, BlobRef, []).
+fetch_stream(StoragePid, BlobRef) when is_binary(BlobRef)->
+    fetch_stream(StoragePid, {BlobRef, 0});
 
-get(StoragePid, BlobRef, Options) ->
-    coffer_storage:get(StoragePid, BlobRef, Options).
+fetch_stream(StoragePid, {BlobRef, Window}) ->
+    coffer_storage:fetch_stream(StoragePid, {BlobRef, Window}).
+
+fetch(StreamPid) ->
+    fetch(StreamPid, infinity).
+
+-spec fetch(StreamPid :: pid(), Timeout :: integer())
+    -> {ok, binary()}
+    | {ok, coffer_eob}
+    | {error, term()}.
+fetch(StreamPid, Timeout) ->
+    receive
+        {data, Data, StreamPid} ->
+            StreamPid ! {ack, self()},
+            {ok, Data};
+        {coffer_eob, StreamPid} ->
+            {ok, coffer_eob};
+        {error, StreamPid, Reason} ->
+            {error, Reason}
+    after Timeout ->
+        kill_receiver(StreamPid)
+    end.
+
+simple_fetch(StoragePid, BlobRef) ->
+    case fetch_stream(StoragePid, BlobRef) of
+        {ok, StreamPid} ->
+            case fetch(StreamPid) of
+                {ok, Data} ->
+                    {ok, coffer_eob} = fetch(StreamPid),
+                    {ok, Data};
+                Error ->
+                    Error
+            end;
+        Error ->
+            Error
+    end.
 
 delete(StoragePid, BlobRef) ->
     coffer_storage:delete(StoragePid, BlobRef).

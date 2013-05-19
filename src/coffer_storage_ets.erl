@@ -12,11 +12,13 @@
 
 -export([init/1, terminate/1]).
 -export([new_receiver/3,
-         handle_get/3, handle_delete/2]).
+         new_stream/3,
+         handle_delete/2]).
 -export([handle_all/1, handle_foldl/4, handle_foreach/2]).
 
 
 -export([receive_loop/3]).
+-export([stream_loop/4]).
 
 %% ------------------------------------------------------------------
 %% coffer_storage Function Definitions
@@ -85,12 +87,42 @@ do_receive_loop(BlobRef, TmpBlobRef, Self, From, Tid) ->
            exit(normal)
     end.
 
-handle_get(Tid, BlobRef, _Options) ->
-    case ets:lookup(Tid, BlobRef) of
-        [{_Key, Value}] ->
-            {ok, Value};
+new_stream({BlobRef, Window}, To, Tid) ->
+    case ets:member(Tid, BlobRef) of
+        true ->
+            StreamPid = spawn_link(?MODULE, stream_loop, [BlobRef, Window, To,
+                                                          Tid]),
+            {ok, StreamPid, Tid};
         _ ->
-            {error, not_found}
+            {error, not_found, Tid}
+    end.
+
+stream_loop(BlobRef, Window, To, Tid) ->
+    MonRef = erlang:monitor(process, To),
+    [{BlobRef, Bin}] = ets:lookup(Tid, BlobRef),
+    do_stream_loop(Bin, Window, To),
+    erlang:demonitor(MonRef, [flush]).
+
+do_stream_loop(<<>>, _Window, To) ->
+    To ! {coffer_eob, self()};
+do_stream_loop(Bin, Window, To)
+        when byte_size(Bin) >= Window, Window > 0 ->
+    << Chunk:Window/binary, Rest/binary >> = Bin,
+
+    To ! {data, Chunk, self()},
+    receive
+        {ack, To} ->
+            do_stream_loop(Rest, Window, To);
+        {'DOWN', _, process, To, _} ->
+            exit(normal)
+    end;
+do_stream_loop(Bin, Window, To) ->
+    To ! {data, Bin, self()},
+    receive
+        {ack, To} ->
+            do_stream_loop(<<>>, Window, To);
+        {'DOWN', _, process, To, _} ->
+            exit(normal)
     end.
 
 handle_delete(Tid, BlobRef) ->
