@@ -13,7 +13,7 @@
 -export([init/1, terminate/1]).
 -export([new_receiver/3,
          new_stream/3,
-         handle_delete/2]).
+         delete/2]).
 -export([handle_all/1, handle_foldl/4, handle_foreach/2]).
 
 
@@ -81,7 +81,7 @@ do_receive_loop(BlobRef, TmpBlobRef, Self, From, Tid) ->
                                [TmpBlobRef, BlobRef]),
                     ets:insert(Tid, {BlobRef, Bin}),
                     ets:delete(Tid, TmpBlobRef),
-                    From ! {ok, Self, size(Bin)}
+                    From ! {ok, Self, byte_size(Bin)}
             end;
         {'DOWN', _, process, From, _} ->
            exit(normal)
@@ -125,13 +125,13 @@ do_stream_loop(Bin, Window, To) ->
             exit(normal)
     end.
 
-handle_delete(Tid, BlobRef) ->
-    case ets:lookup(Tid, BlobRef) of
-        [{_Key, _Value}] ->
+delete(BlobRef, Tid) ->
+    case ets:member(Tid, BlobRef) of
+        true ->
             ets:delete(Tid, BlobRef),
             {ok, Tid};
         _ ->
-            {error, not_found}
+            {error, not_found, Tid}
     end.
 
 handle_all(Tid) ->

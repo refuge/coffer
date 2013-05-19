@@ -36,7 +36,7 @@
     {ok, NewState :: any()}
     | {error, Reason :: any(), NewState :: any()}.
 
--callback handle_delete(State :: any(), BlobRef :: blob_ref()) ->
+-callback delete(State :: any(), BlobRef :: blob_ref()) ->
     {ok, NewState :: any()}
     | {error, Reason :: any()}.
 

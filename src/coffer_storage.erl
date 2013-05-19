@@ -96,12 +96,12 @@ handle_call({fetch_stream, {BlobRef, Window}}, {From, _},
             {reply, {error, Reason}, SS#ss{state=NewState}}
     end;
 handle_call({delete, BlobRef}, _From, #ss{backend=Backend, state=State}=SS) ->
-    case Backend:delete(State, BlobRef) of
+    case Backend:delete(BlobRef, State) of
         {ok, NewState} ->
-            UpdatedSS = SS#ss{state=NewState},
-            {reply, ok, UpdatedSS};
-        {error, Reason} ->
-            {reply, {error, Reason}, SS}
+            {reply, ok, SS#ss{state=NewState}};
+        {error, _Reason, NewState} ->
+            %% it is safe to ignore any error when we delete a blob
+            {reply, ok, SS#ss{state=NewState}}
     end;
 handle_call({all}, _From, #ss{backend=Backend, state=State}=SS) ->
     case Backend:handle_all(State) of
