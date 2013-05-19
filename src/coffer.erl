@@ -44,8 +44,8 @@ get_storage(Name) ->
 
 % --- Storage API ---
 
-new_upload(StoragePid, Id) ->
-    coffer_storage:new_upload(StoragePid, Id).
+new_upload(StoragePid, BlobRef) ->
+    coffer_storage:new_upload(StoragePid, BlobRef).
 
 upload({_Pid, _Conf}=Receiver, Bin) ->
     upload(Receiver, Bin, infinity).
@@ -77,14 +77,14 @@ upload({ReceiverPid, Config}, Bin, Timeout) ->
     end.
 
 
-get(StoragePid, Id) ->
-    get(StoragePid, Id, []).
+get(StoragePid, BlobRef) ->
+    get(StoragePid, BlobRef, []).
 
-get(StoragePid, Id, Options) ->
-    coffer_storage:get(StoragePid, Id, Options).
+get(StoragePid, BlobRef, Options) ->
+    coffer_storage:get(StoragePid, BlobRef, Options).
 
-delete(StoragePid, Id) ->
-    coffer_storage:delete(StoragePid, Id).
+delete(StoragePid, BlobRef) ->
+    coffer_storage:delete(StoragePid, BlobRef).
 
 all(StoragePid) ->
     coffer_storage:all(StoragePid).

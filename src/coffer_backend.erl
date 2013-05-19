@@ -12,7 +12,7 @@
 
 %% Types
 
--type blob_id() :: binary().
+-type blob_ref() :: binary().
 -type options() :: list().
 
 %% callbacks -----------------------------------------------------------------
@@ -31,18 +31,18 @@
 
 % CHANGE/ERASE A BLOB
 
--callback new_receiver(State :: any(), Id :: blob_id()) ->
+-callback new_receiver(State :: any(), BlobRef :: blob_ref()) ->
     {ok, NewState :: any()}
     | {error, Reason :: any(), NewState :: any()}.
 
--callback handle_delete(State :: any(), Id :: blob_id()) ->
+-callback handle_delete(State :: any(), BlobRef :: blob_ref()) ->
     {ok, NewState :: any()}
     | {error, Reason :: any()}.
 
 
 % GET BLOB
 
--callback handle_get(State :: any(), Id :: blob_id(), Options :: options()) ->
+-callback handle_get(State :: any(), BlobRef :: blob_ref(), Options :: options()) ->
     {ok, Data :: binary()}      % in memory
     | {chunk, Data :: binary()} % with Options = [stream]
     | {chunk, done}  % with Options = [stream]
@@ -61,13 +61,13 @@
     {ok, List :: list()}
     | {error, Reason :: any()}.
 
--callback handle_foldl(State :: any(), Func :: fun((Id :: blob_id(), Acc :: any()) -> Final :: any()), Initstate :: any(), Options :: options()) ->
+-callback handle_foldl(State :: any(), Func :: fun((BlobRef :: blob_ref(), Acc :: any()) -> Final :: any()), Initstate :: any(), Options :: options()) ->
     {ok, Final :: any()}
     | {error, Reason :: any()}.
 
 % TODO foreach is also a special case of foldl without taking care of the final result
 % (to discuss)
--callback handle_foreach(State :: any(), Func :: fun((Id :: blob_id()) -> Final :: any())) ->
+-callback handle_foreach(State :: any(), Func :: fun((BlobRef :: blob_ref()) -> Final :: any())) ->
     ok
     | {error, Reason :: any()}.
 

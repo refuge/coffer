@@ -75,18 +75,18 @@ receive_loop(Tid, BlobRef) ->
             end
     end.
 
-handle_get(Tid, Id, _Options) ->
-    case ets:lookup(Tid, Id) of
+handle_get(Tid, BlobRef, _Options) ->
+    case ets:lookup(Tid, BlobRef) of
         [{_Key, Value}] ->
             {ok, Value};
         _ ->
             {error, not_found}
     end.
 
-handle_delete(Tid, Id) ->
-    case ets:lookup(Tid, Id) of
+handle_delete(Tid, BlobRef) ->
+    case ets:lookup(Tid, BlobRef) of
         [{_Key, _Value}] ->
-            ets:delete(Tid, Id),
+            ets:delete(Tid, BlobRef),
             {ok, Tid};
         _ ->
             {error, not_found}

@@ -35,11 +35,11 @@ stop(Pid) ->
 new_upload(Pid, BlobRef) ->
     gen_server:call(Pid, {new_upload, BlobRef}).
 
-get(Pid, Id, Options) ->
-    gen_server:call(Pid, {get, Id, Options}).
+get(Pid, BlobRef, Options) ->
+    gen_server:call(Pid, {get, BlobRef, Options}).
 
-delete(Pid, Id) ->
-    gen_server:call(Pid, {delete, Id}).
+delete(Pid, BlobRef) ->
+    gen_server:call(Pid, {delete, BlobRef}).
 
 all(Pid) ->
     gen_server:call(Pid, {all}).
@@ -85,15 +85,15 @@ handle_call({new_upload, BlobRef}, _From, #ss{backend=Backend,
         {error, Reason, NewState} ->
             {reply, {error, Reason}, SS#ss{state=NewState}}
     end;
-handle_call({get, Id, Options}, _From, #ss{backend=Backend, state=State}=SS) ->
-    case Backend:handle_get(State, Id, Options) of
+handle_call({get, BlobRef, Options}, _From, #ss{backend=Backend, state=State}=SS) ->
+    case Backend:handle_get(State, BlobRef, Options) of
         {error, Reason} ->
             {reply, {error, Reason}, SS};
         Reply ->
             {reply, Reply, SS}
     end;
-handle_call({delete, Id}, _From, #ss{backend=Backend, state=State}=SS) ->
-    case Backend:handle_delete(State, Id) of
+handle_call({delete, BlobRef}, _From, #ss{backend=Backend, state=State}=SS) ->
+    case Backend:handle_delete(State, BlobRef) of
         {ok, NewState} ->
             UpdatedSS = SS#ss{state=NewState},
             {reply, ok, UpdatedSS};
