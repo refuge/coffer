@@ -67,7 +67,7 @@ upload({ReceiverPid, Config}, Bin, Timeout) ->
     ReceiverPid ! {data, self(), Bin, Config},
     receive
         {ack, ReceiverPid, NewConfig} ->
-            {ok, ReceiverPid, NewConfig};
+            {ok, {ReceiverPid, NewConfig}};
         {error, Reason} ->
             {error, Reason};
         {'EXIT', ReceiverPid, Reason} ->
