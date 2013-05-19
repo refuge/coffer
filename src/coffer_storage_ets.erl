@@ -11,12 +11,12 @@
 %% ------------------------------------------------------------------
 
 -export([init/1, terminate/1]).
--export([new_receiver/2,
+-export([new_receiver/3,
          handle_get/3, handle_delete/2]).
 -export([handle_all/1, handle_foldl/4, handle_foreach/2]).
 
 
--export([receive_loop/2]).
+-export([receive_loop/3]).
 
 %% ------------------------------------------------------------------
 %% coffer_storage Function Definitions
@@ -37,19 +37,27 @@ terminate(Tid) ->
     ets:delete(Tid),
     ok.
 
-new_receiver(Tid, BlobRef) ->
+new_receiver(BlobRef, From, Tid) ->
     case ets:lookup(Tid, BlobRef) of
         [] ->
-            ReceiverPid = spawn_link(?MODULE, receive_loop, [Tid, BlobRef]),
+            ReceiverPid = spawn_link(?MODULE, receive_loop, [BlobRef,
+                                                             From,
+                                                             Tid]),
             {ok, {ReceiverPid, nil}, Tid};
         [{BlobRef, Blob}|_] ->
             S = size(Blob),
             {error, {already_exists, BlobRef, S}, Tid}
     end.
 
-receive_loop(Tid, BlobRef) ->
+receive_loop(BlobRef, From, Tid) ->
     TmpBlobRef = << BlobRef/binary, ".tmp" >>,
     Self = self(),
+    MonRef = erlang:monitor(process, From),
+    do_receive_loop(BlobRef, TmpBlobRef, Self, From, Tid),
+    erlang:demonitor(MonRef, [flush]).
+
+
+do_receive_loop(BlobRef, TmpBlobRef, Self, From, Tid) ->
     receive
         {data, From, Bin, Config} ->
             lager:info("Partial upload to ~p~n", [TmpBlobRef]),
@@ -61,7 +69,7 @@ receive_loop(Tid, BlobRef) ->
                     ets:insert(Tid, {TmpBlobRef, NewBin})
             end,
             From ! {ack, Self, Config},
-            receive_loop(Tid, BlobRef);
+            do_receive_loop(BlobRef, TmpBlobRef, Self, From, Tid);
         {eob, From, _Config} ->
             case ets:lookup(Tid, TmpBlobRef) of
                 [] ->
@@ -72,7 +80,9 @@ receive_loop(Tid, BlobRef) ->
                     ets:insert(Tid, {BlobRef, Bin}),
                     ets:delete(Tid, TmpBlobRef),
                     From ! {ok, Self, size(Bin)}
-            end
+            end;
+        {'DOWN', _, process, From, _} ->
+           exit(normal)
     end.
 
 handle_get(Tid, BlobRef, _Options) ->

@@ -63,7 +63,8 @@ foreach(Pid, Func) ->
 init([GivenBackend, GivenConfig]) ->
     case GivenBackend:init(GivenConfig) of
         {ok, State} ->
-            SS = #ss{backend=GivenBackend, config=GivenConfig, state=State},
+            SS = #ss{backend=GivenBackend, config=GivenConfig,
+                     state=State},
             {ok, SS};
         {error, Reason} ->
             {stop, Reason}
@@ -77,9 +78,9 @@ handle_call({stop}, _From, #ss{backend=Backend, state=State}=SS) ->
             % TODO not too sure what to do here...
             {reply, {error, Reason}, SS}
     end;
-handle_call({new_upload, BlobRef}, _From, #ss{backend=Backend,
+handle_call({new_upload, BlobRef}, {From, _}, #ss{backend=Backend,
                                               state=State}=SS) ->
-    case Backend:new_receiver(State, BlobRef) of
+    case Backend:new_receiver(BlobRef, From, State) of
         {ok, {_ReceiverPid, _Config}=Receiver, NewState} ->
             {reply, {ok, Receiver}, SS#ss{state=NewState}};
         {error, Reason, NewState} ->

@@ -31,7 +31,8 @@
 
 % CHANGE/ERASE A BLOB
 
--callback new_receiver(State :: any(), BlobRef :: blob_ref()) ->
+-callback new_receiver(BlobRef :: blob_ref(), From :: pid(),
+                       State :: any()) ->
     {ok, NewState :: any()}
     | {error, Reason :: any(), NewState :: any()}.
 
