@@ -13,13 +13,12 @@
 -export([init/1, terminate/1]).
 -export([new_receiver/3,
          new_stream/3,
-         delete/2]).
--export([handle_all/1, handle_foldl/4, handle_foreach/2]).
-
+         delete/2,
+         enumerate/2]).
 
 -export([receive_loop/3]).
 -export([stream_loop/4]).
-
+-export([enumerate_loop/2]).
 %% ------------------------------------------------------------------
 %% coffer_storage Function Definitions
 %% ------------------------------------------------------------------
@@ -29,50 +28,57 @@ init(Config) ->
         [{Name, Options0}] ->
             Options = [public, ordered_set | Options0],
             Tid = ets:new(Name, Options),
-            {ok, Tid};
+            STid = ets:new(coffer_storage_ets_size, [public,
+                                                     ordered_set]),
+
+            {ok, {Tid, STid}};
         _ ->
             lager:error("Wrong config: ~p", [Config]),
             {error, wrong_config}
     end.
 
-terminate(Tid) ->
+terminate({Tid, STid}) ->
     ets:delete(Tid),
+    ets:delete(STid),
     ok.
 
-new_receiver(BlobRef, From, Tid) ->
+new_receiver(BlobRef, From, {Tid, _STid}=State) ->
     case ets:lookup(Tid, BlobRef) of
         [] ->
             ReceiverPid = spawn_link(?MODULE, receive_loop, [BlobRef,
                                                              From,
-                                                             Tid]),
-            {ok, {ReceiverPid, nil}, Tid};
+                                                             State]),
+            {ok, {ReceiverPid, nil}, State};
         [{BlobRef, Blob}|_] ->
             S = size(Blob),
-            {error, {already_exists, BlobRef, S}, Tid}
+            {error, {already_exists, BlobRef, S}, State}
     end.
 
-receive_loop(BlobRef, From, Tid) ->
+receive_loop(BlobRef, From, State) ->
     TmpBlobRef = << BlobRef/binary, ".tmp" >>,
     Self = self(),
     MonRef = erlang:monitor(process, From),
-    do_receive_loop(BlobRef, TmpBlobRef, Self, From, Tid),
+    do_receive_loop(BlobRef, TmpBlobRef, Self, From, State),
     erlang:demonitor(MonRef, [flush]).
 
 
-do_receive_loop(BlobRef, TmpBlobRef, Self, From, Tid) ->
+do_receive_loop(BlobRef, TmpBlobRef, Self, From, {Tid, STid}=State) ->
     receive
         {data, From, Bin, Config} ->
             lager:info("Partial upload to ~p~n", [TmpBlobRef]),
             case ets:lookup(Tid, TmpBlobRef) of
                 [] ->
-                    ets:insert(Tid, {TmpBlobRef, {Bin, byte_size(Bin)}});
+                    Size = byte_size(Bin),
+                    ets:insert(Tid, {TmpBlobRef, {Bin, Size}}),
+                    ets:insert(STid, {BlobRef, Size});
                 [{TmpBlobRef, {OldBin, _OldSize}}] ->
                     NewBin = << OldBin/binary, Bin/binary>>,
-                    ets:insert(Tid, {TmpBlobRef, {NewBin,
-                                                  byte_size(NewBin)}})
+                    Size = byte_size(NewBin),
+                    ets:insert(Tid, {TmpBlobRef, {NewBin, Size}}),
+                    ets:insert(STid, {TmpBlobRef, Size})
             end,
             From ! {ack, Self, Config},
-            do_receive_loop(BlobRef, TmpBlobRef, Self, From, Tid);
+            do_receive_loop(BlobRef, TmpBlobRef, Self, From, State);
         {eob, From, _Config} ->
             case ets:lookup(Tid, TmpBlobRef) of
                 [] ->
@@ -81,21 +87,23 @@ do_receive_loop(BlobRef, TmpBlobRef, Self, From, Tid) ->
                     lager:info("End upload: rename ~p to ~p~n",
                                [TmpBlobRef, BlobRef]),
                     ets:insert(Tid, {BlobRef, {Bin, Size}}),
+                    ets:insert(STid, {BlobRef, Size}),
                     ets:delete(Tid, TmpBlobRef),
+                    ets:delete(STid, TmpBlobRef),
                     From ! {ok, Self, Size}
             end;
         {'DOWN', _, process, From, _} ->
            exit(normal)
     end.
 
-new_stream({BlobRef, Window}, To, Tid) ->
+new_stream({BlobRef, Window}, To, {Tid, _STid}=State) ->
     case ets:member(Tid, BlobRef) of
         true ->
             StreamPid = spawn_link(?MODULE, stream_loop, [BlobRef, Window, To,
                                                           Tid]),
-            {ok, StreamPid, Tid};
+            {ok, StreamPid, State};
         _ ->
-            {error, not_found, Tid}
+            {error, not_found, State}
     end.
 
 stream_loop(BlobRef, Window, To, Tid) ->
@@ -126,44 +134,34 @@ do_stream_loop(Bin, Window, To) ->
             exit(normal)
     end.
 
-delete(BlobRef, Tid) ->
+delete(BlobRef, {Tid, _STid}=State) ->
     case ets:member(Tid, BlobRef) of
         true ->
             ets:delete(Tid, BlobRef),
-            {ok, Tid};
+            {ok, State};
         _ ->
-            {error, not_found, Tid}
+            {error, not_found, State}
     end.
 
-handle_all(Tid) ->
-    Value = ets:foldl(
-        fun({Key, _}, Acc) ->
-            [Key|Acc]
-        end,
-        [],
-        Tid
-    ),
-    {ok, Value}.
 
-handle_foldl(Tid, Func, InitState, _Options) ->
-    Value = ets:foldl(
-        Func,
-        InitState,
-        Tid
-    ),
-    {ok, Value}.
+enumerate(To, {_Tid, STid}=State) ->
+    EnumeratePid = spawn_link(?MODULE, enumerate_loop, [To, STid]),
+    {ok, EnumeratePid, State}.
 
-handle_foreach(Tid, Func) ->
-    ets:foldl(
-        fun({Key, _}, _) ->
-            Func(Key),
-            []
-        end,
-        [],
-        Tid
-    ),
-    ok.
+enumerate_loop(To, STid) ->
+    MonRef = erlang:monitor(process, To),
+    First = ets:first(STid),
+    do_enumerate_loop(First, To, STid),
+    erlang:demonitor(MonRef, [flush]).
 
-%% ------------------------------------------------------------------
-%% Internal Function Definitions
-%% ------------------------------------------------------------------
+do_enumerate_loop('$end_of_table', To, _STid) ->
+    To ! {done, self()};
+do_enumerate_loop(BlobRef, To, STid) ->
+    [{BlobRef, Size}] = ets:lookup(STid, BlobRef),
+    To ! {blob, {BlobRef, Size}, self()},
+    receive
+        {ack, To} ->
+            do_enumerate_loop(ets:next(STid, BlobRef), To, STid);
+        {'DOWN', _, process, To, _} ->
+            exit(normal)
+    end.

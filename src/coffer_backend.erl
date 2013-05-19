@@ -13,7 +13,6 @@
 %% Types
 
 -type blob_ref() :: binary().
--type options() :: list().
 
 %% callbacks -----------------------------------------------------------------
 
@@ -49,26 +48,8 @@
     | {error, any()}.
 
 
-% QUERY callbacks
-% those functions don't change anything by themselves
-% but merely iterate over the blobs
-
-% TODO we can remove this one from the storage
-% all is a special case of foldl and can be
-% handled by the coffer_storage behaviour
-% for all storage (to discuss...)
--callback handle_all(State :: any()) ->
-    {ok, List :: list()}
+%% ENUMERATE
+%%
+-callback enumerate(To :: pid(), State :: any()) ->
+    {ok, EnumeratePid :: pid()}
     | {error, Reason :: any()}.
-
--callback handle_foldl(State :: any(), Func :: fun((BlobRef :: blob_ref(), Acc :: any()) -> Final :: any()), Initstate :: any(), Options :: options()) ->
-    {ok, Final :: any()}
-    | {error, Reason :: any()}.
-
-% TODO foreach is also a special case of foldl without taking care of the final result
-% (to discuss)
--callback handle_foreach(State :: any(), Func :: fun((BlobRef :: blob_ref()) -> Final :: any())) ->
-    ok
-    | {error, Reason :: any()}.
-
-

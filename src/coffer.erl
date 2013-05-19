@@ -12,7 +12,8 @@
          fetch_stream/2, fetch/1, fetch/2,
          simple_fetch/2,
          delete/2,
-         all/1, foldl/3, foldl/4, foreach/2]).
+         start_enumerate/1, enumerate/1, enumerate/2,
+         foldl/3, all/1, foreach/2]).
 
 % --- Application ---
 
@@ -123,21 +124,67 @@ simple_fetch(StoragePid, BlobRef) ->
 delete(StoragePid, BlobRef) ->
     coffer_storage:delete(StoragePid, BlobRef).
 
-all(StoragePid) ->
-    coffer_storage:all(StoragePid).
+
+start_enumerate(StoragePid) ->
+    coffer_storage:enumerate(StoragePid).
+
+enumerate(EnumeratePid) ->
+    enumerate(EnumeratePid, infinity).
+
+enumerate(EnumeratePid, Timeout) ->
+    receive
+        {blob, {BlobRef, Size}, EnumeratePid} ->
+            EnumeratePid ! {ack, self()},
+            {ok, {BlobRef, Size}};
+        {error, Reason, EnumeratePid} ->
+            {error, Reason};
+        {done, EnumeratePid} ->
+            done
+    after Timeout ->
+        kill_receiver(EnumeratePid)
+    end.
 
 foldl(StoragePid, Func, InitState) ->
-    foldl(StoragePid, Func, InitState, []).
+    case start_enumerate(StoragePid) of
+        {ok, EnumeratePid} ->
+            do_foldl(EnumeratePid, Func, InitState);
+        Error ->
+            Error
+    end.
 
-foldl(StoragePid, Func, InitState, Options) ->
-    coffer_storage:foldl(StoragePid, Func, InitState, Options).
+all(StoragePid) ->
+    foldl(StoragePid, fun(Info, Acc) ->
+                Acc ++ [Info]
+        end, []).
 
 foreach(StoragePid, Func) ->
-    coffer_storage:foreach(StoragePid, Func).
+    Wrapper = fun(Info, _State) ->
+            Func(Info)
+    end,
+    case foldl(StoragePid, Wrapper, nil) of
+        {error, Error, _} ->
+            throw({error, Error});
+        _ ->
+            ok
+    end.
+
 
 %% ------------------------------------------------------------------
 %% Internal functions
 %% ------------------------------------------------------------------
+
+do_foldl(EnumeratePid, Func, State) ->
+    case enumerate(EnumeratePid) of
+        {ok, {_BlobRef, _Size}=Info} ->
+            NewState = Func(Info, State),
+            do_foldl(EnumeratePid, Func, NewState);
+        {error, Error} ->
+            lager:error("foldl error: ~p~n", [Error]),
+            {error, Error, State};
+        done ->
+            State
+    end.
+
 
 -spec kill_receiver(pid()) -> any() | {error, any()}.
 kill_receiver(Pid) ->

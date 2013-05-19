@@ -12,7 +12,7 @@
 %% ------------------------------------------------------------------
 
 -export([start/2, stop/1]).
--export([new_upload/2, fetch_stream/2, delete/2, all/1, foldl/4, foreach/2]).
+-export([new_upload/2, fetch_stream/2, delete/2, enumerate/1]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
@@ -41,14 +41,8 @@ fetch_stream(Pid, {BlobRef, Window}) ->
 delete(Pid, BlobRef) ->
     gen_server:call(Pid, {delete, BlobRef}).
 
-all(Pid) ->
-    gen_server:call(Pid, {all}).
-
-foldl(Pid, Func, InitState, Options) ->
-    gen_server:call(Pid, {foldl, Func, InitState, Options}).
-
-foreach(Pid, Func) ->
-    gen_server:call(Pid, {foreach, Func}).
+enumerate(Pid) ->
+    gen_server:call(Pid, enumerate).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
@@ -103,29 +97,15 @@ handle_call({delete, BlobRef}, _From, #ss{backend=Backend, state=State}=SS) ->
             %% it is safe to ignore any error when we delete a blob
             {reply, ok, SS#ss{state=NewState}}
     end;
-handle_call({all}, _From, #ss{backend=Backend, state=State}=SS) ->
-    case Backend:handle_all(State) of
-        {error, Reason} ->
-            {reply, {error, Reason}, SS};
-        Reply ->
-            {reply, Reply, SS}
-    end;
-handle_call({foldl, Func, InitState, Options}, _From, #ss{backend=Backend, state=State}=SS) ->
-    case Backend:handle_foldl(State, Func, InitState, Options) of
-        {error, Reason} ->
-            {reply, {error, Reason}, SS};
-        Reply ->
-            {reply, Reply, SS}
-    end;
-handle_call({foreach, Func}, _From, #ss{backend=Backend, state=State}=SS) ->
-    case Backend:handle_all(State, Func) of
-        {error, Reason} ->
-            {reply, {error, Reason}, SS};
-        Reply ->
-            {reply, Reply, SS}
+handle_call(enumerate, {From, _}, #ss{backend=Backend, state=State}=SS) ->
+    case Backend:enumerate(From, State) of
+        {ok, EnumeratePid, NewState} ->
+            {reply, {ok, EnumeratePid}, SS#ss{state=NewState}};
+        {error, Reason, NewState} ->
+            {reply, {error, Reason}, SS#ss{state=NewState}}
     end;
 handle_call(_Request, _From, State) ->
-    {reply, ok, State}.
+    {reply, unknown_call, State}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
