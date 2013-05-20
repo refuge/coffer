@@ -19,6 +19,29 @@
          stat/2]).
 -export([register_receiver/1, unregister_receiver/1,
          lookup_receiver/1]).
+-export([subscribe/1, unsubscribe/1, notify/2]).
+
+%% @doc Subscribe to storage events for a storage named `StorageName'
+%%
+%% The message received to each subscriber will be of the form:
+%%
+%% `{coffer_event, StorageName, Event}'
+%%
+%% @end
+subscribe(StorageName) ->
+    gproc:reg({p,l,{coffer_event, StorageName}}).
+
+%% @doc Remove subscribtion created using `subscribe(StorageName)'
+%%
+%% @end
+unsubscribe(StorageName) ->
+    gproc:unreg({p,l,{coffer_event, StorageName}}).
+
+%% @doc notify an event for this storage
+notify(StorageName, Event) ->
+    gproc:send({p, l, {coffer_event, StorageName}},
+               {coffer_event, StorageName, Event}).
+
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
@@ -97,7 +120,6 @@ handle_call({new_upload, BlobRef}, {From, _}, #ss{backend=Backend,
         Pid when is_pid(Pid) ->
             {reply, {error, already_uploading}, SS};
         _ ->
-
             case Backend:new_receiver(BlobRef, From, State) of
                 {ok, {_ReceiverPid, _Config}=Receiver, NewState} ->
                     {reply, {ok, Receiver}, SS#ss{state=NewState}};
