@@ -134,8 +134,6 @@ stream_loop(Fd, Window, To) ->
     end,
     erlang:demonitor(MonRef, [flush]).
 
-
-
 do_stream_loop(Fd, Window, To) ->
     case file:read(Fd, Window) of
         {ok, Data} ->
@@ -151,6 +149,25 @@ do_stream_loop(Fd, Window, To) ->
         {error, Reason} ->
             To ! {error, Reason, self()}
     end.
+
+delete(BlobRef, #ldst{path=Path}=State) ->
+    {BlobDir, BlobFName} = blob_path(BlobRef, Path),
+    BlobPath = filename:join([BlobDir, BlobFName]),
+
+    case file:is_regular(BlobPath) of
+        ok ->
+            case file:delete(BlobPath) of
+                ok ->
+                    {ok, State};
+                {error, Reason} ->
+                    lager:error("Error deleting ~p: ~p~n", [BlobRef,
+                                                            Reason]),
+                    {error, Reason, State}
+            end;
+        _ ->
+            {error, not_found, State}
+    end.
+
 
 enumerate(To, #ldsdt{path=Path}=State) ->
     ok.
