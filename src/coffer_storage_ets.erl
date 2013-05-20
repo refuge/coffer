@@ -69,13 +69,11 @@ do_receive_loop(BlobRef, TmpBlobRef, Self, From, {Tid, STid}=State) ->
             case ets:lookup(Tid, TmpBlobRef) of
                 [] ->
                     Size = byte_size(Bin),
-                    ets:insert(Tid, {TmpBlobRef, {Bin, Size}}),
-                    ets:insert(STid, {BlobRef, Size});
+                    ets:insert(Tid, {TmpBlobRef, {Bin, Size}});
                 [{TmpBlobRef, {OldBin, _OldSize}}] ->
                     NewBin = << OldBin/binary, Bin/binary>>,
                     Size = byte_size(NewBin),
-                    ets:insert(Tid, {TmpBlobRef, {NewBin, Size}}),
-                    ets:insert(STid, {TmpBlobRef, Size})
+                    ets:insert(Tid, {TmpBlobRef, {NewBin, Size}})
             end,
             From ! {ack, Self, Config},
             do_receive_loop(BlobRef, TmpBlobRef, Self, From, State);
