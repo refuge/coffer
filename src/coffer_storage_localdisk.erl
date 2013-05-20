@@ -21,6 +21,8 @@
 
 
 -export([receive_loop/4]).
+-export([stream_loop/3]).
+
 -record(ldst, {name,
                path}).
 
@@ -102,7 +104,53 @@ do_receive_loop(FD, TmpBlobPath, BlobRef, BlobPath, From,
             end;
         {'DOWN', _, process, From, _} ->
            exit(normal)
-        end.
+    end.
+
+new_stream({BlobRef, Window}, To, #ldst{path=Path}=State) ->
+    {BlobDir, BlobFName} = blob_path(BlobRef, Path),
+    BlobPath = filename:join([BlobDir, BlobFName]),
+
+    case file:is_regular(BlobPath) of
+        ok ->
+            case file:open(BlobPath, [read]) of
+                {ok, Fd} ->
+                    StreamPid = spawn_link(?MODULE, stream_loop,
+                                           [Fd, Window, To]),
+                    {ok, StreamPid, State};
+                {error, Reason} ->
+                    {error, Reason, State}
+            end;
+        _ ->
+            {error, not_found, State}
+    end.
+
+
+stream_loop(Fd, Window, To) ->
+    MonRef = erlang:monitor(process, To),
+    try
+        do_stream_loop(Fd, Window, To)
+    after
+        file:close(Fd)
+    end,
+    erlang:demonitor(MonRef, [flush]).
+
+
+
+do_stream_loop(Fd, Window, To) ->
+    case file:read(Fd, Window) of
+        {ok, Data} ->
+            To ! {data, Data, self()},
+            receive
+                {ack, To} ->
+                    do_stream_loop(Fd, Window, To);
+                {'DOWN', _, process, To, _} ->
+                    exit(normal)
+            end;
+        eof ->
+            To ! {coffer_eob, self()};
+        {error, Reason} ->
+            To ! {error, Reason, self()}
+    end.
 
 enumerate(To, #ldsdt{path=Path}=State) ->
     ok.
