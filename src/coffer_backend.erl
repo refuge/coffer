@@ -18,7 +18,7 @@
 
 % INIT/STOP
 
--callback init(Config :: list()) ->
+-callback init(StorageName :: binary(), Config :: list()) ->
     {ok, State :: any()}
     | {error, Reason :: any()}.
 

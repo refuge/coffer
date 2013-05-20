@@ -10,7 +10,7 @@
 %% coffer_storage Function Exports
 %% ------------------------------------------------------------------
 
--export([init/1, terminate/1]).
+-export([init/2, terminate/1]).
 -export([new_receiver/3,
          new_stream/3,
          delete/2,
@@ -20,11 +20,12 @@
 -export([receive_loop/3]).
 -export([stream_loop/4]).
 -export([enumerate_loop/2]).
+
 %% ------------------------------------------------------------------
 %% coffer_storage Function Definitions
 %% ------------------------------------------------------------------
 
-init(Config) ->
+init(StorageName, Config) ->
     case Config of
         [{Name, Options0}] ->
             Options = [public, ordered_set | Options0],
@@ -32,18 +33,18 @@ init(Config) ->
             STid = ets:new(coffer_storage_ets_size, [public,
                                                      ordered_set]),
 
-            {ok, {Tid, STid}};
+            {ok, {StorageName, Tid, STid}};
         _ ->
             lager:error("Wrong config: ~p", [Config]),
             {error, wrong_config}
     end.
 
-terminate({Tid, STid}) ->
+terminate({_Name, Tid, STid}) ->
     ets:delete(Tid),
     ets:delete(STid),
     ok.
 
-new_receiver(BlobRef, From, {Tid, _STid}=State) ->
+new_receiver(BlobRef, From, {_Name, Tid, _STid}=State) ->
     case ets:lookup(Tid, BlobRef) of
         [] ->
             ReceiverPid = spawn_link(?MODULE, receive_loop, [BlobRef,
@@ -55,17 +56,18 @@ new_receiver(BlobRef, From, {Tid, _STid}=State) ->
             {error, {already_exists, BlobRef, S}, State}
     end.
 
-receive_loop(BlobRef, From, State) ->
+receive_loop(BlobRef, From, {Name, _, _}=State) ->
     TmpBlobRef = << BlobRef/binary, ".tmp" >>,
     Self = self(),
     MonRef = erlang:monitor(process, From),
     coffer_storage:register_receiver(BlobRef),
     do_receive_loop(BlobRef, TmpBlobRef, Self, From, State),
+    coffer_storage:notify(Name, {uploaded, BlobRef}),
     coffer_storage:unregister_receiver(BlobRef),
     erlang:demonitor(MonRef, [flush]).
 
 
-do_receive_loop(BlobRef, TmpBlobRef, Self, From, {Tid, STid}=State) ->
+do_receive_loop(BlobRef, TmpBlobRef, Self, From, {_Name, Tid, STid}=State) ->
     receive
         {data, From, Bin, Config} ->
             lager:info("Partial upload to ~p~n", [TmpBlobRef]),
@@ -99,7 +101,7 @@ do_receive_loop(BlobRef, TmpBlobRef, Self, From, {Tid, STid}=State) ->
            exit(normal)
     end.
 
-new_stream({BlobRef, Window}, To, {Tid, _STid}=State) ->
+new_stream({BlobRef, Window}, To, {_Name, Tid, _STid}=State) ->
     case ets:member(Tid, BlobRef) of
         true ->
             StreamPid = spawn_link(?MODULE, stream_loop, [BlobRef, Window, To,
@@ -137,17 +139,18 @@ do_stream_loop(Bin, Window, To) ->
             exit(normal)
     end.
 
-delete(BlobRef, {Tid, _STid}=State) ->
+delete(BlobRef, {Name, Tid, _STid}=State) ->
     case ets:member(Tid, BlobRef) of
         true ->
             ets:delete(Tid, BlobRef),
+            coffer_storage:notify(Name, {deleted, BlobRef}),
             {ok, State};
         _ ->
             {error, not_found, State}
     end.
 
 
-enumerate(To, {_Tid, STid}=State) ->
+enumerate(To, {_Name, _Tid, STid}=State) ->
     EnumeratePid = spawn_link(?MODULE, enumerate_loop, [To, STid]),
     {ok, EnumeratePid, State}.
 
@@ -175,7 +178,7 @@ do_enumerate_loop(BlobRef, To, STid) ->
             end
     end.
 
-stat(BlobRefs, {_Tid, STid}=State) ->
+stat(BlobRefs, {_Name, _Tid, STid}=State) ->
     {Found, Missing} = lists:foldl(fun(BlobRef, {F, M}) ->
                     case ets:lookup(STid, BlobRef) of
                         [{BlobRef, _Size}=KV] ->

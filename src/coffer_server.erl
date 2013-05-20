@@ -140,7 +140,7 @@ do_add_storage(StorageName, Backend, Config,
         undefined ->
             lager:info("Starting storage: ~p with backend: ~p",
                        [StorageName, Backend]),
-            case coffer_storage:start(Backend, Config) of
+            case coffer_storage:start(StorageName, Backend, Config) of
                 {ok, Pid} ->
                     lager:info("Storage ~p successfully started!",
                                [StorageName]),

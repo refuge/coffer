@@ -11,7 +11,7 @@
 %% API Function Exports
 %% ------------------------------------------------------------------
 
--export([start/2, stop/1]).
+-export([start/3, stop/1]).
 -export([new_upload/2,
          fetch_stream/2,
          delete/2,
@@ -20,6 +20,14 @@
 -export([register_receiver/1, unregister_receiver/1,
          lookup_receiver/1]).
 -export([subscribe/1, unsubscribe/1, notify/2]).
+
+
+%% ------------------------------------------------------------------
+%% gen_server Function Exports
+%% ------------------------------------------------------------------
+
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2,
+         terminate/2, code_change/3]).
 
 %% @doc Subscribe to storage events for a storage named `StorageName'
 %%
@@ -44,18 +52,11 @@ notify(StorageName, Event) ->
 
 
 %% ------------------------------------------------------------------
-%% gen_server Function Exports
-%% ------------------------------------------------------------------
-
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2, code_change/3]).
-
-%% ------------------------------------------------------------------
 %% API Function Definitions
 %% ------------------------------------------------------------------
 
-start(Backend, Config) ->
-    gen_server:start_link(?MODULE, [Backend, Config], []).
+start(StorageName, Backend, Config) ->
+    gen_server:start_link(?MODULE, [StorageName, Backend, Config], []).
 
 stop(Pid) ->
     gen_server:call(Pid, stop).
@@ -91,15 +92,18 @@ lookup_receiver(BlobRef) ->
 %% ------------------------------------------------------------------
 
 -record(ss, {
+    name,
     backend,
     config,
     state
 }).
 
-init([GivenBackend, GivenConfig]) ->
-    case GivenBackend:init(GivenConfig) of
+init([GivenName, GivenBackend, GivenConfig]) ->
+    case GivenBackend:init(GivenName, GivenConfig) of
         {ok, State} ->
-            SS = #ss{backend=GivenBackend, config=GivenConfig,
+            SS = #ss{name=GivenName,
+                     backend=GivenBackend,
+                     config=GivenConfig,
                      state=State},
             {ok, SS};
         {error, Reason} ->
