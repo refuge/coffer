@@ -73,7 +73,8 @@ init([]) ->
     end,
     FinalState = lists:foldl(
         fun({StorageName, Backend, Config}, State) ->
-            {_, NewState} = do_add_storage(StorageName, Backend, Config, State),
+            {_, NewState} = do_add_storage(StorageName, Backend, Config,
+                                           State),
             NewState
         end,
         #state{},
@@ -130,21 +131,29 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
-do_add_storage(StorageName, Backend, Config, State) when is_list(StorageName) ->
+do_add_storage(StorageName, Backend, Config, State)
+        when is_list(StorageName) ->
     do_add_storage(iolist_to_binary(StorageName), Backend, Config, State);
-do_add_storage(StorageName, Backend, Config, #state{storages=Storages}=State) ->
+do_add_storage(StorageName, Backend, Config,
+               #state{storages=Storages}=State) ->
     case proplists:get_value(StorageName, Storages) of
         undefined ->
-            lager:info("Starting storage: ~p with backend: ~p", [StorageName, Backend]),
+            lager:info("Starting storage: ~p with backend: ~p",
+                       [StorageName, Backend]),
             case coffer_storage:start(Backend, Config) of
                 {ok, Pid} ->
-                    lager:info("Storage ~p successfully started!", [StorageName]),
-                    Storage = #storage{name=StorageName, backend=Backend, config=Config, pid=Pid},
+                    lager:info("Storage ~p successfully started!",
+                               [StorageName]),
+                    Storage = #storage{name=StorageName,
+                                       backend=Backend,
+                                       config=Config,
+                                       pid=Pid},
                     UpdatedStorages = [ {StorageName, Storage} | Storages ],
                     NewState = State#state{storages=UpdatedStorages},
                     {ok, NewState};
                 ErrorAtLoad ->
-                    lager:error("An error occured loading the storage ~p with error: ~p~n", [StorageName, ErrorAtLoad]),
+                    lager:error("Error when loading storage ~p: ~p~n", [
+                            StorageName, ErrorAtLoad]),
                     {{error, cant_start}, State}
             end;
         _AlreadyThere ->
