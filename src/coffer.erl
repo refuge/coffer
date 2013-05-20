@@ -12,6 +12,7 @@
          fetch_stream/2, fetch/1, fetch/2,
          simple_fetch/2,
          delete/2,
+         stat/2,
          start_enumerate/1, enumerate/1, enumerate/2,
          foldl/3, all/1, foreach/2]).
 
@@ -124,6 +125,10 @@ simple_fetch(StoragePid, BlobRef) ->
 delete(StoragePid, BlobRef) ->
     coffer_storage:delete(StoragePid, BlobRef).
 
+
+
+stat(StoragePid, BlobRefs) ->
+    coffer_storage:stat(StoragePid, BlobRefs).
 
 start_enumerate(StoragePid) ->
     coffer_storage:enumerate(StoragePid).

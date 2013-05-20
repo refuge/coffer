@@ -12,7 +12,11 @@
 %% ------------------------------------------------------------------
 
 -export([start/2, stop/1]).
--export([new_upload/2, fetch_stream/2, delete/2, enumerate/1]).
+-export([new_upload/2,
+         fetch_stream/2,
+         delete/2,
+         enumerate/1,
+         stat/2]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
@@ -43,6 +47,9 @@ delete(Pid, BlobRef) ->
 
 enumerate(Pid) ->
     gen_server:call(Pid, enumerate).
+
+stat(Pid, BlobRefs) ->
+    gen_server:call(Pid, {stat, BlobRefs}).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
@@ -104,6 +111,14 @@ handle_call(enumerate, {From, _}, #ss{backend=Backend, state=State}=SS) ->
         {error, Reason, NewState} ->
             {reply, {error, Reason}, SS#ss{state=NewState}}
     end;
+handle_call({stat, BlobRefs}, _From, #ss{backend=Backend, state=State}=SS) ->
+    case Backend:stat(BlobRefs, State) of
+        {ok, {_Found, _Missing}=R, NewState} ->
+            {reply, {ok, R}, SS#ss{state=NewState}};
+        {error, Reason, NewState} ->
+            {reply, {error, Reason}, SS#ss{state=NewState}}
+    end;
+
 handle_call(_Request, _From, State) ->
     {reply, unknown_call, State}.
 

@@ -53,3 +53,11 @@
 -callback enumerate(To :: pid(), State :: any()) ->
     {ok, EnumeratePid :: pid()}
     | {error, Reason :: any()}.
+
+
+%% STAT
+%%
+-callback stat(BlobRefs :: [blob_ref()], State :: any()) ->
+    {ok, {Found ::  [blob_ref()], Missing :: [blob_ref()]}, State :: any() }
+    | {error, Reason :: any(), State :: any()}.
+

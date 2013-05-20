@@ -14,7 +14,8 @@
 -export([new_receiver/3,
          new_stream/3,
          delete/2,
-         enumerate/2]).
+         enumerate/2,
+         stat/2]).
 
 -export([receive_loop/3]).
 -export([stream_loop/4]).
@@ -171,3 +172,14 @@ do_enumerate_loop(BlobRef, To, STid) ->
                     exit(normal)
             end
     end.
+
+stat(BlobRefs, {_Tid, STid}=State) ->
+    {Found, Missing} = lists:foldl(fun(BlobRef, {F, M}) ->
+                    case ets:lookup(STid, BlobRef) of
+                        [{BlobRef, _Size}=KV] ->
+                            {[KV | F], M};
+                        [] ->
+                            {F, [BlobRef | M]}
+                    end
+            end, {[], []}, BlobRefs),
+    {ok, {lists:reverse(Found), lists:reverse(Missing)}, State}.
