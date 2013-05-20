@@ -17,6 +17,10 @@
          enumerate/2,
          stat/2]).
 
+%% ------------------------------------------------------------------
+%% Internal API
+%% ------------------------------------------------------------------
+
 -export([receive_loop/3]).
 -export([stream_loop/4]).
 -export([enumerate_loop/2]).
@@ -36,7 +40,7 @@ init(StorageName, Config) ->
             {ok, {StorageName, Tid, STid}};
         _ ->
             lager:error("Wrong config: ~p", [Config]),
-            {error, wrong_config}
+            {error, bad_config}
     end.
 
 terminate({_Name, Tid, STid}) ->
