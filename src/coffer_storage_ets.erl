@@ -59,7 +59,9 @@ receive_loop(BlobRef, From, State) ->
     TmpBlobRef = << BlobRef/binary, ".tmp" >>,
     Self = self(),
     MonRef = erlang:monitor(process, From),
+    coffer_storage:register_receiver(BlobRef),
     do_receive_loop(BlobRef, TmpBlobRef, Self, From, State),
+    coffer_storage:unregister_receiver(BlobRef),
     erlang:demonitor(MonRef, [flush]).
 
 

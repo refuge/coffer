@@ -6,7 +6,8 @@
   {applications, [
                   kernel,
                   stdlib,
-                  lager
+                  lager,
+                  gproc
                  ]},
   {mod, { coffer_app, []}},
   {env, [{ip, any}, {port, 8080}]}

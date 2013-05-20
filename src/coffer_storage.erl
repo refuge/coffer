@@ -17,6 +17,8 @@
          delete/2,
          enumerate/1,
          stat/2]).
+-export([register_receiver/1, unregister_receiver/1,
+         lookup_receiver/1]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
@@ -51,6 +53,16 @@ enumerate(Pid) ->
 stat(Pid, BlobRefs) ->
     gen_server:call(Pid, {stat, BlobRefs}).
 
+
+register_receiver(BlobRef) ->
+    coffer_util:register({blob, BlobRef, receiver}).
+
+unregister_receiver(BlobRef) ->
+    coffer_util:unregister({blob, BlobRef, receiver}).
+
+lookup_receiver(BlobRef) ->
+    coffer_util:lookup({blob, BlobRef, receiver}).
+
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
@@ -81,11 +93,17 @@ handle_call({stop}, _From, #ss{backend=Backend, state=State}=SS) ->
     end;
 handle_call({new_upload, BlobRef}, {From, _}, #ss{backend=Backend,
                                               state=State}=SS) ->
-    case Backend:new_receiver(BlobRef, From, State) of
-        {ok, {_ReceiverPid, _Config}=Receiver, NewState} ->
-            {reply, {ok, Receiver}, SS#ss{state=NewState}};
-        {error, Reason, NewState} ->
-            {reply, {error, Reason}, SS#ss{state=NewState}}
+    case catch(lookup_receiver(BlobRef)) of
+        Pid when is_pid(Pid) ->
+            {reply, {error, already_uploading}, SS};
+        _ ->
+
+            case Backend:new_receiver(BlobRef, From, State) of
+                {ok, {_ReceiverPid, _Config}=Receiver, NewState} ->
+                    {reply, {ok, Receiver}, SS#ss{state=NewState}};
+                {error, Reason, NewState} ->
+                    {reply, {error, Reason}, SS#ss{state=NewState}}
+            end
     end;
 handle_call({fetch_stream, {BlobRef, Window}}, {From, _},
             #ss{backend=Backend, state=State}=SS) ->
@@ -138,5 +156,4 @@ code_change(_OldVsn, State, _Extra) ->
 %% ---------------------------------------------------------------------------
 %% Internal Function Definitions
 %% ---------------------------------------------------------------------------
-
 
