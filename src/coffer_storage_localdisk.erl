@@ -22,6 +22,7 @@
 
 -export([receive_loop/4]).
 -export([stream_loop/3]).
+-export([enumerate_loop/2]).
 
 -record(ldst, {name,
                path}).
@@ -98,6 +99,7 @@ do_receive_loop(FD, TmpBlobPath, BlobRef, BlobPath, From,
                     coffer_storage:notify(Name, {uploaded, BlobRef}),
                     {ok, FileInfo} = file:read_file_info(BlobPath),
                     #file_info{size=S} = FileInfo,
+                    coffer_storage:notify({uploaded, BlobRef}),
                     From ! {ok, self(), S};
                 {error, Error} ->
                     From ! {error, Error}
@@ -170,7 +172,52 @@ delete(BlobRef, #ldst{path=Path}=State) ->
 
 
 enumerate(To, #ldsdt{path=Path}=State) ->
+    EnumeratePid = spawn_link(?MODULE, enumerate_loop, [To, Path]),
+    {ok, EnumeratePid, State}.
     ok.
+
+enumerate_loop(To, Path) ->
+    MonRef = erlang:monitor(process, To),
+    Files = filelib:wildcard("*", Path),
+    do_enumerate_loop(Files, To, Path),
+    erlang:demonitor(MonRef, [flush]).
+
+do_enumerate_loop([], To, Path) ->
+    To ! {done, self()};
+do_enumerate_loop([File|Rest], To, Path) ->
+    NewPath = filename:join(Path, File),
+    case filelib:is_dir(NewPath) of
+        true ->
+            Files = filelib:wildcard("*", NewPath),
+            process_dir(Files, To, NewPath, 1)
+            do_enumerate_loop(Rest, To, Path);
+         _ ->
+            do_enumerate_loop(Rest, To, Path)
+    end.
+
+process_dir([], _To, _Path, _Depth) ->
+    ok;
+process_dir([File|Rest], To, Path, Depth) ->
+    NewPath = filename:join(Path, File),
+    case filelib:is_dir(NewPath) of
+        true when Depth <= 4 ->
+            Files = filelib:wildcard("*", NewPath),
+            process_dir(Files, To, NewPath, Depth + 1),
+            process_dir(Rest, To, Path);
+        true ->
+            process_dir(Rest, To, Path);
+         false when Depth > 4 ->
+            [HashType|HashPart] = string:tokens(NewPath, "/"),
+            BlobRef = iolist_to_binary([HashType, "-",
+                lists:flatten(HashParts)]),
+            To ! {blob, {BlobRef, Size}, self()},
+            receive
+                {ack, To} ->
+                    process_dir(Rest, To, Path);
+                {'DOWN', _, process, To, _} ->
+                    exit(normal)
+            end
+    end.
 
 stat(BlobRefs, #ldsdt{path=Path}=State) ->
     ok.
@@ -193,7 +240,6 @@ blob_path(BlobRef, Path) ->
         _ ->
             {error, invalid_blobref}
     end.
-
 
 temp_blobref(BlobRef) ->
     filename:join([cofffer_util:gettempdir(), "coffer-",
