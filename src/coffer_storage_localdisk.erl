@@ -171,49 +171,51 @@ delete(BlobRef, #ldst{path=Path}=State) ->
     end.
 
 
-enumerate(To, #ldsdt{path=Path}=State) ->
+enumerate(To, #ldst{path=Path}=State) ->
     EnumeratePid = spawn_link(?MODULE, enumerate_loop, [To, Path]),
     {ok, EnumeratePid, State}.
-    ok.
 
 enumerate_loop(To, Path) ->
     MonRef = erlang:monitor(process, To),
     Files = filelib:wildcard("*", Path),
-    do_enumerate_loop(Files, To, Path),
+    do_enumerate_loop(Files, To, Path, Path),
     erlang:demonitor(MonRef, [flush]).
 
-do_enumerate_loop([], To, Path) ->
+do_enumerate_loop([], To, _Path, _StoragePath) ->
     To ! {done, self()};
-do_enumerate_loop([File|Rest], To, Path) ->
+do_enumerate_loop([File|Rest], To, Path, StoragePath) ->
     NewPath = filename:join(Path, File),
     case filelib:is_dir(NewPath) of
         true ->
             Files = filelib:wildcard("*", NewPath),
-            process_dir(Files, To, NewPath, 1)
-            do_enumerate_loop(Rest, To, Path);
+            process_dir(Files, To, NewPath, StoragePath, 1),
+            do_enumerate_loop(Rest, To, Path, StoragePath);
          _ ->
-            do_enumerate_loop(Rest, To, Path)
+            do_enumerate_loop(Rest, To, Path, StoragePath)
     end.
 
-process_dir([], _To, _Path, _Depth) ->
+process_dir([], _To, _Path, _StoragePath, _Depth) ->
     ok;
-process_dir([File|Rest], To, Path, Depth) ->
+process_dir([File|Rest], To, Path, StoragePath, Depth) ->
     NewPath = filename:join(Path, File),
     case filelib:is_dir(NewPath) of
-        true when Depth <= 4 ->
+        true when Depth < 5 ->
             Files = filelib:wildcard("*", NewPath),
-            process_dir(Files, To, NewPath, Depth + 1),
-            process_dir(Rest, To, Path);
+            process_dir(Files, To, NewPath, StoragePath, Depth + 1),
+            process_dir(Rest, To, Path, StoragePath, Depth);
         true ->
-            process_dir(Rest, To, Path);
+            process_dir(Rest, To, Path, StoragePath, Depth);
          false when Depth > 4 ->
-            [HashType|HashPart] = string:tokens(NewPath, "/"),
+            [_, RelBlobPath] = binary:split(NewPath, StoragePath),
+            [HashType|HashParts] = string:tokens(RelBlobPath, "/"),
             BlobRef = iolist_to_binary([HashType, "-",
-                lists:flatten(HashParts)]),
+                                        lists:flatten(HashParts)]),
+            {ok, FileInfo} = file:read_file_info(NewPath),
+            #file_info{size=Size} = FileInfo,
             To ! {blob, {BlobRef, Size}, self()},
             receive
                 {ack, To} ->
-                    process_dir(Rest, To, Path);
+                    process_dir(Rest, To, Path, StoragePath, Depth);
                 {'DOWN', _, process, To, _} ->
                     exit(normal)
             end
