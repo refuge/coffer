@@ -221,10 +221,39 @@ process_dir([File|Rest], To, Path, StoragePath, Depth) ->
             end
     end.
 
-stat(BlobRefs, #ldsdt{path=Path}=State) ->
-    ok.
+stat(BlobRefs, #ldst{path=Path}=State) ->
+    {Found, Missing} = lists:foldl(fun(BlobRef, {F, M}) ->
+                    {BlobDir, BlobFName} = blob_path(BlobRef, Path),
+                    BlobPath = filename:join([BlobDir, BlobFName]),
+                    case filelib:is_regular(BlobPath) of
+                        true ->
+                            {ok, FileInfo} = file:read_file_info(BlobPath),
+                            #file_info{size=Size} = FileInfo,
+                            {[{BlobRef, Size} | F], M};
+                        _ ->
+                            {F, [BlobRef | M]}
+                    end
+            end, {[], []}, BlobRefs),
 
-
+    {Partials, Missing1} = case Missing of
+        [] ->
+            {[], Missing};
+        _ ->
+            ToFind = [{BlobRef, temp_blobref(BlobRef)}
+                      || BlobRef <- Missing],
+            lists:foldl(fun({BlobRef, TmpBlobRef}, {P, M}) ->
+                        case filelib:is_regular(TmpBlobRef) of
+                            true ->
+                                {ok, FileInfo} = file:read_file_info(TmpBlobRef),
+                                #file_info{size=Size} = FileInfo,
+                                {[{BlobRef, Size} | P], M};
+                            _ ->
+                                {P, [BlobRef | M]}
+                        end
+                end, {[], []}, ToFind)
+    end,
+    {ok, {lists:reverse(Found), lists:reverse(Missing1),
+          lists:reverse(Partials)}, State}.
 
 %% @private
 %%
