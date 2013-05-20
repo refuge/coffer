@@ -58,6 +58,7 @@
 %% STAT
 %%
 -callback stat(BlobRefs :: [blob_ref()], State :: any()) ->
-    {ok, {Found ::  [blob_ref()], Missing :: [blob_ref()]}, State :: any() }
+    {ok, {Found ::  [blob_ref()], Missing :: [blob_ref()],
+          Partials :: [blob_ref()]}, State :: any() }
     | {error, Reason :: any(), State :: any()}.
 

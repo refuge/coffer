@@ -71,7 +71,7 @@ do_receive_loop(BlobRef, TmpBlobRef, Self, From, {Tid, STid}=State) ->
                 [] ->
                     Size = byte_size(Bin),
                     ets:insert(Tid, {TmpBlobRef, {Bin, Size}}),
-                    ets:insert(STid, {BlobRef, Size});
+                    ets:insert(STid, {TmpBlobRef, Size});
                 [{TmpBlobRef, {OldBin, _OldSize}}] ->
                     NewBin = << OldBin/binary, Bin/binary>>,
                     Size = byte_size(NewBin),
@@ -182,4 +182,20 @@ stat(BlobRefs, {_Tid, STid}=State) ->
                             {F, [BlobRef | M]}
                     end
             end, {[], []}, BlobRefs),
-    {ok, {lists:reverse(Found), lists:reverse(Missing)}, State}.
+    {Partials, Missing1} = case Missing of
+        [] ->
+            {[], Missing};
+        _ ->
+            ToFind = [{BlobRef, << BlobRef/binary, ".tmp" >>}
+                      || BlobRef <- Missing],
+            lists:foldl(fun({BlobRef, TmpBlobRef}, {P, M}) ->
+                        case ets:lookup(STid, TmpBlobRef) of
+                            [{TmpBlobRef, Size}] ->
+                                {[{BlobRef, Size} | P], M};
+                            [] ->
+                                {P, [BlobRef | M]}
+                        end
+                end, {[], []}, ToFind)
+    end,
+    {ok, {lists:reverse(Found), lists:reverse(Missing1),
+          lists:reverse(Partials)}, State}.

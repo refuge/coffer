@@ -113,7 +113,7 @@ handle_call(enumerate, {From, _}, #ss{backend=Backend, state=State}=SS) ->
     end;
 handle_call({stat, BlobRefs}, _From, #ss{backend=Backend, state=State}=SS) ->
     case Backend:stat(BlobRefs, State) of
-        {ok, {_Found, _Missing}=R, NewState} ->
+        {ok, {_Found, _Missing, _Partials}=R, NewState} ->
             {reply, {ok, R}, SS#ss{state=NewState}};
         {error, Reason, NewState} ->
             {reply, {error, Reason}, SS#ss{state=NewState}}
