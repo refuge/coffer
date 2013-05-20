@@ -69,11 +69,13 @@ do_receive_loop(BlobRef, TmpBlobRef, Self, From, {Tid, STid}=State) ->
             case ets:lookup(Tid, TmpBlobRef) of
                 [] ->
                     Size = byte_size(Bin),
-                    ets:insert(Tid, {TmpBlobRef, {Bin, Size}});
+                    ets:insert(Tid, {TmpBlobRef, {Bin, Size}}),
+                    ets:insert(STid, {BlobRef, Size});
                 [{TmpBlobRef, {OldBin, _OldSize}}] ->
                     NewBin = << OldBin/binary, Bin/binary>>,
                     Size = byte_size(NewBin),
-                    ets:insert(Tid, {TmpBlobRef, {NewBin, Size}})
+                    ets:insert(Tid, {TmpBlobRef, {NewBin, Size}}),
+                    ets:insert(STid, {TmpBlobRef, Size})
             end,
             From ! {ack, Self, Config},
             do_receive_loop(BlobRef, TmpBlobRef, Self, From, State);
@@ -156,10 +158,16 @@ do_enumerate_loop('$end_of_table', To, _STid) ->
     To ! {done, self()};
 do_enumerate_loop(BlobRef, To, STid) ->
     [{BlobRef, Size}] = ets:lookup(STid, BlobRef),
-    To ! {blob, {BlobRef, Size}, self()},
-    receive
-        {ack, To} ->
+    S = Size - 4,
+    case BlobRef of
+        << _:S/binary, ".tmp" >> ->
             do_enumerate_loop(ets:next(STid, BlobRef), To, STid);
-        {'DOWN', _, process, To, _} ->
-            exit(normal)
+        _ ->
+            To ! {blob, {BlobRef, Size}, self()},
+            receive
+                {ack, To} ->
+                    do_enumerate_loop(ets:next(STid, BlobRef), To, STid);
+                {'DOWN', _, process, To, _} ->
+                    exit(normal)
+            end
     end.
