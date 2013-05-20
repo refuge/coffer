@@ -182,8 +182,8 @@ stat(BlobRefs, #ldsdt{path=Path}=State) ->
 blob_path(BlobRef, Path) ->
     case binary:split(BlobRef, <<"-">>) of
         [HashType, Hash] ->
-            << A:1/binary, B:1/binary, C:1/binary, FName/binary >> = BlobRef,
-            BlobDir = filename:join([HashType, A, B, C]),
+            << A:1/binary, B:1/binary, C:1/binary, FName/binary >> = Hash,
+            BlobDir = filename:join([Path, HashType, A, B, C]),
             case filelib:ensure_dir(BlobDir) of
                 ok ->
                     {BlobDir, FName};
