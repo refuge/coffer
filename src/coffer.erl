@@ -9,7 +9,7 @@
 -export([list_storages/0, add_storage/3, remove_storage/1, get_storage/1]).
 -export([new_upload/2,
          upload/2, upload/3,
-         fetch_stream/2, fetch/1, fetch/2,
+         new_stream/2, fetch/1, fetch/2,
          simple_fetch/2,
          delete/2,
          stat/2,
@@ -82,11 +82,11 @@ upload({ReceiverPid, Config}, Bin, Timeout) ->
     end.
 
 
-fetch_stream(StoragePid, BlobRef) when is_binary(BlobRef)->
-    fetch_stream(StoragePid, {BlobRef, 0});
+new_stream(StoragePid, BlobRef) when is_binary(BlobRef)->
+    new_stream(StoragePid, {BlobRef, 0});
 
-fetch_stream(StoragePid, {BlobRef, Window}) ->
-    coffer_storage:fetch_stream(StoragePid, {BlobRef, Window}).
+new_stream(StoragePid, {BlobRef, Window}) ->
+    coffer_storage:new_stream(StoragePid, {BlobRef, Window}).
 
 fetch(StreamPid) ->
     fetch(StreamPid, infinity).

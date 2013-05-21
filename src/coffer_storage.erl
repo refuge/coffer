@@ -13,7 +13,7 @@
 
 -export([start/3, stop/1]).
 -export([new_upload/2,
-         fetch_stream/2,
+         new_stream/2,
          delete/2,
          enumerate/1,
          stat/2]).
@@ -65,8 +65,8 @@ stop(Pid) ->
 new_upload(Pid, BlobRef) ->
     gen_server:call(Pid, {new_upload, BlobRef}).
 
-fetch_stream(Pid, {BlobRef, Window}) ->
-    gen_server:call(Pid, {fetch_stream, {BlobRef, Window}}).
+new_stream(Pid, {BlobRef, Window}) ->
+    gen_server:call(Pid, {new_stream, {BlobRef, Window}}).
 
 delete(Pid, BlobRef) ->
     gen_server:call(Pid, {delete, BlobRef}).
@@ -131,7 +131,7 @@ handle_call({new_upload, BlobRef}, {From, _}, #ss{backend=Backend,
                     {reply, {error, Reason}, SS#ss{state=NewState}}
             end
     end;
-handle_call({fetch_stream, {BlobRef, Window}}, {From, _},
+handle_call({new_stream, {BlobRef, Window}}, {From, _},
             #ss{backend=Backend, state=State}=SS) ->
 
     case Backend:new_stream({BlobRef, Window}, From, State) of
