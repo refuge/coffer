@@ -6,16 +6,16 @@
 
 -module(coffer_blob).
 
--export([validate_blobref/1,
-         parse_blobref/1,
-         blob_path/2]).
+-export([validate_ref/1,
+         parse_ref/1,
+         path/2]).
 
-blob_path(Root, BlobRef) ->
-    {HashType, Hash} = parse_blobref(BlobRef),
+path(Root, BlobRef) ->
+    {HashType, Hash} = parse_ref(BlobRef),
     << A:1/binary, B:1/binary, C:1/binary, FName/binary >> = Hash,
     filename:join([Root, HashType, A, B, C, FName]).
 
-parse_blobref(Ref) ->
+parse_ref(Ref) ->
     Re = get_blob_regexp(),
     case re:run(Ref, Re, [{capture, all, binary}]) of
         nomatch ->
@@ -25,7 +25,7 @@ parse_blobref(Ref) ->
             {HashType, Hash}
     end.
 
-validate_blobref(Ref) ->
+validate_ref(Ref) ->
     Re = get_blob_regexp(),
     case re:run(Ref, Re, [{capture, none}]) of
         nomatch ->

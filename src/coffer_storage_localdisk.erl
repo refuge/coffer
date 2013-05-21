@@ -46,36 +46,36 @@ terminate(_State) ->
     ok.
 
 new_receiver(BlobRef, From, #ldst{path=Path}=State) ->
-    {BlobDir, BlobFName} = blob_path(BlobRef, Path),
-    BlobPath = filename:join([BlobDir, BlobFName]),
-
-    case filelib:is_regular(BlobPath) of
-        true ->
-            {ok, FileInfo} = file:read_file_info(BlobPath),
-            #file_info{size=S} = FileInfo,
-            {error, {already_exists, BlobRef, S}, State};
-        _ ->
-            ReceiverPid = spawn_link(?MODULE, receive_loop, [BlobRef,
-                                                             BlobPath,
-                                                             From,
-                                                             State]),
-            {ok, {ReceiverPid, nil}, State}
+    case coffer_blob:validate_ref(BlobRef) of
+        ok ->
+            BlobPath = coffer_blob:path(Path, BlobRef),
+            case filelib:is_regular(BlobPath) of
+                true ->
+                    {ok, FileInfo} = file:read_file_info(BlobPath),
+                    #file_info{size=S} = FileInfo,
+                    {error, {already_exists, BlobRef, S}, State};
+                _ ->
+                    ReceiverPid = spawn_link(?MODULE, receive_loop, [BlobRef,
+                                                                     BlobPath,
+                                                                     From,
+                                                                     State]),
+                    {ok, {ReceiverPid, nil}, State}
+            end;
+        error ->
+            {error, invalid_blobref}
     end.
+
 
 
 receive_loop(BlobRef, BlobPath, From, State) ->
     MonRef = erlang:monitor(process, From),
     coffer_storage:register_receiver(BlobRef),
 
-    TmpBlobPath = temp_blobref(BlobRef),
+    TmpBlobPath = temp_blob(BlobRef),
     case file:open(TmpBlobPath, [write, append]) of
         {ok, FD} ->
-                try
-                    do_receive_loop(FD, TmpBlobPath, BlobRef, BlobPath,
-                                    From, State)
-                after
-                    catch (file:close(FD))
-                end;
+                do_receive_loop(FD, TmpBlobPath, BlobRef, BlobPath,
+                                From, State);
         {error, Reason} ->
             lager:error("Error opening ~p: ~p~n", [TmpBlobPath,
                                                    Reason]),
@@ -86,20 +86,23 @@ receive_loop(BlobRef, BlobPath, From, State) ->
 
 
 do_receive_loop(FD, TmpBlobPath, BlobRef, BlobPath, From,
-                #ldst{name=Name}) ->
+                #ldst{name=Name}=State) ->
     receive
         {data, From, Bin, Config} ->
             lager:info("Partial upload to ~p~n", [TmpBlobPath]),
             file:write(FD, Bin),
-            From ! {ack, self(), Config};
+            From ! {ack, self(), Config},
+            do_receive_loop(FD, TmpBlobPath, BlobRef, BlobPath, From,
+                            State);
         {eob, From, _Config} ->
             file:close(FD),
+            ok = filelib:ensure_dir(BlobPath),
             case file:rename(TmpBlobPath, BlobPath) of
                 ok ->
                     coffer_storage:notify(Name, {uploaded, BlobRef}),
                     {ok, FileInfo} = file:read_file_info(BlobPath),
                     #file_info{size=S} = FileInfo,
-                    coffer_storage:notify({uploaded, BlobRef}),
+                    coffer_storage:notify(Name, {uploaded, BlobRef}),
                     From ! {ok, self(), S};
                 {error, Error} ->
                     From ! {error, Error}
@@ -109,8 +112,7 @@ do_receive_loop(FD, TmpBlobPath, BlobRef, BlobPath, From,
     end.
 
 new_stream({BlobRef, Window}, To, #ldst{path=Path}=State) ->
-    {BlobDir, BlobFName} = blob_path(BlobRef, Path),
-    BlobPath = filename:join([BlobDir, BlobFName]),
+    BlobPath = coffer_blob:path(Path, BlobRef),
 
     case file:is_regular(BlobPath) of
         ok ->
@@ -153,8 +155,7 @@ do_stream_loop(Fd, Window, To) ->
     end.
 
 delete(BlobRef, #ldst{path=Path}=State) ->
-    {BlobDir, BlobFName} = blob_path(BlobRef, Path),
-    BlobPath = filename:join([BlobDir, BlobFName]),
+    BlobPath = coffer_blob:path(Path, BlobRef),
 
     case file:is_regular(BlobPath) of
         ok ->
@@ -223,8 +224,7 @@ process_dir([File|Rest], To, Path, StoragePath, Depth) ->
 
 stat(BlobRefs, #ldst{path=Path}=State) ->
     {Found, Missing} = lists:foldl(fun(BlobRef, {F, M}) ->
-                    {BlobDir, BlobFName} = blob_path(BlobRef, Path),
-                    BlobPath = filename:join([BlobDir, BlobFName]),
+                    BlobPath = coffer_blob:path(Path, BlobRef),
                     case filelib:is_regular(BlobPath) of
                         true ->
                             {ok, FileInfo} = file:read_file_info(BlobPath),
@@ -239,7 +239,7 @@ stat(BlobRefs, #ldst{path=Path}=State) ->
         [] ->
             {[], Missing};
         _ ->
-            ToFind = [{BlobRef, temp_blobref(BlobRef)}
+            ToFind = [{BlobRef, temp_blob(BlobRef)}
                       || BlobRef <- Missing],
             lists:foldl(fun({BlobRef, TmpBlobRef}, {P, M}) ->
                         case filelib:is_regular(TmpBlobRef) of
@@ -257,21 +257,7 @@ stat(BlobRefs, #ldst{path=Path}=State) ->
 
 %% @private
 %%
-blob_path(BlobRef, Path) ->
-    case binary:split(BlobRef, <<"-">>) of
-        [HashType, Hash] ->
-            << A:1/binary, B:1/binary, C:1/binary, FName/binary >> = Hash,
-            BlobDir = filename:join([Path, HashType, A, B, C]),
-            case filelib:ensure_dir(BlobDir) of
-                ok ->
-                    {BlobDir, FName};
-                Error ->
-                    Error
-            end;
-        _ ->
-            {error, invalid_blobref}
-    end.
 
-temp_blobref(BlobRef) ->
-    filename:join([coffer_util:gettempdir(), "coffer-",
-                   binary_to_list(BlobRef), ".tmp"]).
+temp_blob(BlobRef) ->
+    TempName = iolist_to_binary([<<"coffer-">>, BlobRef, <<".tmp">>]),
+    filename:join([coffer_util:gettempdir(), TempName]).
