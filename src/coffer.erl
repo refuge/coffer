@@ -16,6 +16,8 @@
          start_enumerate/1, enumerate/1, enumerate/2,
          foldl/3, all/1, foreach/2]).
 
+-define(DEFAULT_WINDOW, 4096).
+
 % --- Application ---
 
 %% @doc Start the coffer application. Useful when testing using the shell.
@@ -83,7 +85,7 @@ upload({ReceiverPid, Config}, Bin, Timeout) ->
 
 
 new_stream(StoragePid, BlobRef) when is_binary(BlobRef)->
-    new_stream(StoragePid, {BlobRef, 0});
+    new_stream(StoragePid, {BlobRef, ?DEFAULT_WINDOW});
 
 new_stream(StoragePid, {BlobRef, Window}) ->
     coffer_storage:new_stream(StoragePid, {BlobRef, Window}).
@@ -109,7 +111,7 @@ fetch(StreamPid, Timeout) ->
     end.
 
 simple_fetch(StoragePid, BlobRef) ->
-    case fetch_stream(StoragePid, BlobRef) of
+    case new_stream(StoragePid, BlobRef) of
         {ok, StreamPid} ->
             case fetch(StreamPid) of
                 {ok, Data} ->

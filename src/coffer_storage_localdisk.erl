@@ -114,8 +114,10 @@ do_receive_loop(FD, TmpBlobPath, BlobRef, BlobPath, From,
 new_stream({BlobRef, Window}, To, #ldst{path=Path}=State) ->
     BlobPath = coffer_blob:path(Path, BlobRef),
 
-    case file:is_regular(BlobPath) of
-        ok ->
+    lager:info("start new stream for ~p from ~p~n", [BlobRef,
+                                                     BlobPath]),
+    case filelib:is_file(BlobPath) of
+        true ->
             case file:open(BlobPath, [read]) of
                 {ok, Fd} ->
                     StreamPid = spawn_link(?MODULE, stream_loop,
