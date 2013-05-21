@@ -34,7 +34,7 @@ init(StorageName, Config) ->
             lager:info("~p: invalid path~n", [StorageName]),
             {error, {bad_config, invalid_path}};
         Path ->
-            case filelib:ensure_dir(Path) of
+            case filelib:ensure_dir(filename:join(Path, "dummy")) of
                 ok ->
                     {ok, #ldst{name=StorageName, path=Path}};
                 {error, Reason} ->
