@@ -49,7 +49,7 @@ new_receiver(BlobRef, From, #ldst{path=Path}=State) ->
     {BlobDir, BlobFName} = blob_path(BlobRef, Path),
     BlobPath = filename:join([BlobDir, BlobFName]),
 
-    case file:is_regular(BlobPath) of
+    case filelib:is_regular(BlobPath) of
         true ->
             {ok, FileInfo} = file:read_file_info(BlobPath),
             #file_info{size=S} = FileInfo,
@@ -273,5 +273,5 @@ blob_path(BlobRef, Path) ->
     end.
 
 temp_blobref(BlobRef) ->
-    filename:join([cofffer_util:gettempdir(), "coffer-",
+    filename:join([coffer_util:gettempdir(), "coffer-",
                    binary_to_list(BlobRef), ".tmp"]).
