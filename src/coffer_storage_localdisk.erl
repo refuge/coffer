@@ -180,49 +180,34 @@ enumerate(To, #ldst{path=Path}=State) ->
 
 enumerate_loop(To, Path) ->
     MonRef = erlang:monitor(process, To),
-    Files = filelib:wildcard("*", Path),
-    do_enumerate_loop(Files, To, Path, Path),
+    walk(Path, Path, To),
+    To ! {done, self()},
     erlang:demonitor(MonRef, [flush]).
 
-do_enumerate_loop([], To, _Path, _StoragePath) ->
-    To ! {done, self()};
-do_enumerate_loop([File|Rest], To, Path, StoragePath) ->
-    NewPath = filename:join(Path, File),
-    case filelib:is_dir(NewPath) of
+walk(Root, Path, To) ->
+    case filelib:is_dir(Path) of
         true ->
-            Files = filelib:wildcard("*", NewPath),
-            process_dir(Files, To, NewPath, StoragePath, 1),
-            do_enumerate_loop(Rest, To, Path, StoragePath);
-         _ ->
-            do_enumerate_loop(Rest, To, Path, StoragePath)
-    end.
-
-process_dir([], _To, _Path, _StoragePath, _Depth) ->
-    ok;
-process_dir([File|Rest], To, Path, StoragePath, Depth) ->
-    NewPath = filename:join(Path, File),
-    case filelib:is_dir(NewPath) of
-        true when Depth < 5 ->
-            Files = filelib:wildcard("*", NewPath),
-            process_dir(Files, To, NewPath, StoragePath, Depth + 1),
-            process_dir(Rest, To, Path, StoragePath, Depth);
-        true ->
-            process_dir(Rest, To, Path, StoragePath, Depth);
-         false when Depth > 4 ->
-            [_, RelBlobPath] = binary:split(NewPath, StoragePath),
-            [HashType|HashParts] = string:tokens(RelBlobPath, "/"),
-            BlobRef = iolist_to_binary([HashType, "-",
-                                        lists:flatten(HashParts)]),
-            {ok, FileInfo} = file:read_file_info(NewPath),
-            #file_info{size=Size} = FileInfo,
-            To ! {blob, {BlobRef, Size}, self()},
-            receive
-                {ack, To} ->
-                    process_dir(Rest, To, Path, StoragePath, Depth);
-                {'DOWN', _, process, To, _} ->
-                    exit(normal)
+            Children = filelib:wildcard(Path ++ "/*"),
+            lists:foreach(fun(P) ->
+                        walk(Root, P, To)
+                end,  Children);
+        _ ->
+            case filelib:is_file(Path) of
+                true ->
+                    Size = file_size(Path),
+                    BlobRef = coffer_blob:from_path(Root, Path),
+                    To ! {blob, {BlobRef, Size}, self()},
+                    receive
+                        {next, To} ->
+                            ok;
+                        {'DOWN', _, process, To, _} ->
+                            exit(normal)
+                    end;
+                _ ->
+                    ok
             end
     end.
+
 
 stat(BlobRefs, #ldst{path=Path}=State) ->
     {Found, Missing} = lists:foldl(fun(BlobRef, {F, M}) ->
@@ -263,3 +248,8 @@ stat(BlobRefs, #ldst{path=Path}=State) ->
 temp_blob(BlobRef) ->
     TempName = iolist_to_binary([<<"coffer-">>, BlobRef, <<".tmp">>]),
     filename:join([coffer_util:gettempdir(), TempName]).
+
+file_size(Path) ->
+    {ok, FileInfo} = file:read_file_info(Path),
+    #file_info{size=Size} = FileInfo,
+    Size.

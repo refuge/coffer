@@ -141,7 +141,7 @@ enumerate(EnumeratePid) ->
 enumerate(EnumeratePid, Timeout) ->
     receive
         {blob, {BlobRef, Size}, EnumeratePid} ->
-            EnumeratePid ! {ack, self()},
+            EnumeratePid ! {next, self()},
             {ok, {BlobRef, Size}};
         {error, Reason, EnumeratePid} ->
             {error, Reason};

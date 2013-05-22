@@ -8,12 +8,19 @@
 
 -export([validate_ref/1,
          parse_ref/1,
-         path/2]).
+         path/2,
+         from_path/2]).
 
 path(Root, BlobRef) ->
     {HashType, Hash} = parse_ref(BlobRef),
     << A:1/binary, B:1/binary, C:1/binary, FName/binary >> = Hash,
     filename:join([Root, HashType, A, B, C, FName]).
+
+
+from_path(Root, Path) ->
+    [_, RelPath] = re:split(Path, Root, [{return, list}]),
+    [HashType|Rest] = string:tokens(RelPath, "/"),
+    iolist_to_binary([HashType, "-", [C || C <- Rest]]).
 
 parse_ref(Ref) ->
     Re = get_blob_regexp(),

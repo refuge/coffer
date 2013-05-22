@@ -175,7 +175,7 @@ do_enumerate_loop(BlobRef, To, STid) ->
         _ ->
             To ! {blob, {BlobRef, Size}, self()},
             receive
-                {ack, To} ->
+                {next, To} ->
                     do_enumerate_loop(ets:next(STid, BlobRef), To, STid);
                 {'DOWN', _, process, To, _} ->
                     exit(normal)
