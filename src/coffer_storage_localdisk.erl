@@ -65,8 +65,6 @@ new_receiver(BlobRef, From, #ldst{path=Path}=State) ->
             {error, invalid_blobref}
     end.
 
-
-
 receive_loop(BlobRef, BlobPath, From, State) ->
     MonRef = erlang:monitor(process, From),
     coffer_storage:register_receiver(BlobRef),
@@ -208,15 +206,23 @@ walk(Root, Path, To) ->
             end
     end.
 
+stat(BlobRefs0, #ldst{path=Path}=State) ->
+    %% before stating anything check the blob refs
+    BlobRefs = lists:foldl(fun(BlobRef, Acc) ->
+                    case coffer_blob:validate_ref(BlobRef) of
+                        ok ->
+                            Acc ++ [BlobRef];
+                        error ->
+                            Acc
+                    end
+            end, [], BlobRefs0),
 
-stat(BlobRefs, #ldst{path=Path}=State) ->
+    %% find missing
     {Found, Missing} = lists:foldl(fun(BlobRef, {F, M}) ->
                     BlobPath = coffer_blob:path(Path, BlobRef),
-                    case filelib:is_regular(BlobPath) of
+                    case filelib:is_file(BlobPath) of
                         true ->
-                            {ok, FileInfo} = file:read_file_info(BlobPath),
-                            #file_info{size=Size} = FileInfo,
-                            {[{BlobRef, Size} | F], M};
+                            {[{BlobRef, file_size(BlobPath)} | F], M};
                         _ ->
                             {F, [BlobRef | M]}
                     end
@@ -226,14 +232,11 @@ stat(BlobRefs, #ldst{path=Path}=State) ->
         [] ->
             {[], Missing};
         _ ->
-            ToFind = [{BlobRef, temp_blob(BlobRef)}
-                      || BlobRef <- Missing],
-            lists:foldl(fun({BlobRef, TmpBlobRef}, {P, M}) ->
-                        case filelib:is_regular(TmpBlobRef) of
+            ToFind = [{BlobRef, temp_blob(BlobRef)} || BlobRef <- Missing],
+            lists:foldl(fun({BlobRef, TmpBlobPath}, {P, M}) ->
+                        case filelib:is_file(TmpBlobPath) of
                             true ->
-                                {ok, FileInfo} = file:read_file_info(TmpBlobRef),
-                                #file_info{size=Size} = FileInfo,
-                                {[{BlobRef, Size} | P], M};
+                                {[{BlobRef, file_size(TmpBlobPath)} | P], M};
                             _ ->
                                 {P, [BlobRef | M]}
                         end
