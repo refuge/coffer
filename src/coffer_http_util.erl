@@ -7,6 +7,7 @@
 
 -export([not_allowed/2]).
 -export([not_found/1, error/2]).
+-export([to_json/1]).
 
 not_allowed(AllowedMethods, Req) ->
     AddCommaFunc = fun(Element, Acc) ->
@@ -30,13 +31,15 @@ not_allowed(AllowedMethods, Req) ->
 
 not_found(Req) ->
     ReturnedData = [{<<"error">>, <<"not found">>}],
-    Json = jsx:encode(ReturnedData),
-    PrettyJson = jsx:prettify(Json),
+    PrettyJson = to_json(ReturnedData),
     cowboy_req:reply(404, [{<<"Content-Type">>, <<"application/json">>}], PrettyJson, Req).
 
 error(Reason, Req) ->
     ReasonInBinary = iolist_to_binary(io_lib:format("~p", [Reason])),
     ReturnedData = [{<<"error">>, ReasonInBinary}],
-    Json = jsx:encode(ReturnedData),
-    PrettyJson = jsx:prettify(Json),
+    PrettyJson = to_json(ReturnedData),
     cowboy_req:reply(500, [{<<"Content-Type">>, <<"application/json">>}], PrettyJson, Req).
+
+to_json(Data) ->
+    FlatJson = jsx:encode(Data),
+    jsx:prettify(FlatJson).

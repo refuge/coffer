@@ -9,7 +9,7 @@
 -export([handle/2]).
 -export([terminate/2]).
 
--define(CHUNK_SIZE, 8196).
+-compile([{parse_transform, lager_transform}]).
 
 init(_Transport, Req, []) ->
     {ok, Req, undefined}.
@@ -93,7 +93,7 @@ maybe_process(StorageName, BlobRef, <<"GET">>, false, Req) ->
         _ ->
             Storage = coffer:get_storage(StorageName),
 
-            case coffer:fetch_stream(Storage, {BlobRef, ?CHUNK_SIZE}) of
+            case coffer:new_stream(Storage, BlobRef) of
                 {ok, Stream} ->
                     {ok, Req2} = cowboy_req:chunked_reply(200, Req),
                     stream_out_blob(Stream, Req2);
