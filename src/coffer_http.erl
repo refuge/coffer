@@ -8,9 +8,9 @@
 -export([dispatch_rules/1]).
 
 dispatch_rules(Prefix0) ->
-    Rules = [{[], cfs_http_root, []},
-             {[container], cfs_http_container, []},
-             {[container, blob], cfs_http_blob, []}],
+    Rules = [{[], coffer_http_root, []},
+             {[container], coffer_http_container, []},
+             {[container, blob], coffer_http_blob, []}],
 
     case maybe_prefix(Prefix0) of
         [] ->

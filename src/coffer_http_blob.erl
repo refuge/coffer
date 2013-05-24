@@ -25,9 +25,9 @@ handle(Req, State) ->
 maybe_process(StorageName, BlobRef, <<"DELETE">>, false, Req) ->
     case coffer:get_storage(StorageName) of
         {error, not_found} ->
-            cfs_http_util:not_found(Req);
+            coffer_http_util:not_found(Req);
         {error, Reason} ->
-            cfs_http_util:error(Reason, Req);
+            coffer_http_util:error(Reason, Req);
         _ ->
             StoragePid = coffer:get_storage(StorageName),
             case coffer:delete(StoragePid, BlobRef) of
@@ -43,15 +43,15 @@ maybe_process(StorageName, BlobRef, <<"DELETE">>, false, Req) ->
                     PrettyJson = jsx:prettify(Json),
                     cowboy_req:reply(202, [], PrettyJson, Req);
                 {error, not_found} ->
-                    cfs_http_util:not_found(Req)
+                    coffer_http_util:not_found(Req)
             end
     end;
 maybe_process(StorageName, BlobRef, <<"PUT">>, true, Req) ->
     case coffer:get_storage(StorageName) of
         {error, not_found} ->
-            cfs_http_util:not_found(Req);
+            coffer_http_util:not_found(Req);
         {error, Reason} ->
-            cfs_http_util:error(Reason, Req);
+            coffer_http_util:error(Reason, Req);
         _ ->
             StoragePid = coffer:get_storage(StorageName),
             case coffer:new_upload(StoragePid, BlobRef) of
@@ -87,9 +87,9 @@ maybe_process(StorageName, BlobRef, <<"PUT">>, true, Req) ->
 maybe_process(StorageName, BlobRef, <<"GET">>, false, Req) ->
     case coffer:get_storage(StorageName) of
         {error, not_found} ->
-            cfs_http_util:not_found(Req);
+            coffer_http_util:not_found(Req);
         {error, Reason} ->
-            cfs_http_util:error(Reason, Req);
+            coffer_http_util:error(Reason, Req);
         _ ->
             Storage = coffer:get_storage(StorageName),
 
@@ -99,11 +99,11 @@ maybe_process(StorageName, BlobRef, <<"GET">>, false, Req) ->
                     stream_out_blob(Stream, Req2);
                 {error, Error} ->
                     lager:error("Error fetching the blob ~p with reason: ~p", [BlobRef, Error]),
-                    cfs_http_util:not_found(Req)
+                    coffer_http_util:not_found(Req)
             end
     end;
 maybe_process(_, _, _, _, Req) ->
-    cfs_http_util:not_allowed([<<"GET">>, <<"PUT">>, <<"DELETE">>], Req).
+    coffer_http_util:not_allowed([<<"GET">>, <<"PUT">>, <<"DELETE">>], Req).
 
 terminate(_Req, _State) ->
     ok.

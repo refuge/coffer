@@ -21,9 +21,9 @@ handle(Req, State) ->
 maybe_process(StorageName, <<"PUT">>, Req) ->
     case coffer:get_storage(StorageName) of
         {error, not_found} ->
-            cfs_http_util:not_found(Req);
+            coffer_http_util:not_found(Req);
         {error, Reason} ->
-            cfs_http_util:error(Reason, Req);
+            coffer_http_util:error(Reason, Req);
         _ ->
             Pid = coffer:get_storage(StorageName),
 
@@ -70,9 +70,9 @@ maybe_process(StorageName, <<"PUT">>, Req) ->
 maybe_process(StorageName, <<"GET">>, Req) ->
     case coffer:get_storage(StorageName) of
         {error, not_found} ->
-            cfs_http_util:not_found(Req);
+            coffer_http_util:not_found(Req);
         {error, Reason} ->
-            cfs_http_util:error(Reason, Req);
+            coffer_http_util:error(Reason, Req);
         _ ->
             Pid = coffer:get_storage(StorageName),
 
@@ -90,7 +90,7 @@ maybe_process(StorageName, <<"GET">>, Req) ->
             cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>}], PrettyJson, Req)
     end;
 maybe_process(_, _, Req) ->
-    cfs_http_util:not_allowed([<<"GET">>, <<"PUT">>], Req).
+    coffer_http_util:not_allowed([<<"GET">>, <<"PUT">>], Req).
 
 terminate(_Req, _State) ->
     ok.

@@ -27,7 +27,7 @@ maybe_process(<<"GET">>, Req) ->
 
     cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>}], PrettyJson, Req);
 maybe_process(_, Req) ->
-    cfs_http_util:not_allowed([<<"GET">>], Req).
+    coffer_http_util:not_allowed([<<"GET">>], Req).
 
 terminate(_Req, _State) ->
     ok.
