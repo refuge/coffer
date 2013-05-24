@@ -62,15 +62,10 @@ get(StorageName) ->
 init([]) ->
     %
     % storages : [
-    %     { StorageName, Backend, Config }
+    %     { StorageName, Mod, Config }
     % ]
     %
-    StoragesConfig = case application:get_env(coffer, storages) of
-        undefined ->
-            [];
-        {ok, Other} ->
-            Other
-    end,
+    StoragesConfig = coffer_app:get_app_env(storages, []),
     FinalState = lists:foldl(
         fun({StorageName, Backend, Config}, State) ->
             {_, NewState} = do_add_storage(StorageName, Backend, Config,

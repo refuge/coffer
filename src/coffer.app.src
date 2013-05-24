@@ -1,14 +1,12 @@
-{application, coffer,
- [
-  {description, "Blob strongbox"},
-  {vsn, "0.1"},
-  {registered, []},
-  {applications, [
-                  kernel,
-                  stdlib,
-                  lager,
-                  gproc
-                 ]},
-  {mod, { coffer_app, []}},
-  {env, [{ip, any}, {port, 8080}]}
- ]}.
+%% -*- tab-width: 4;erlang-indent-level: 4;indent-tabs-mode: nil -*-
+%% ex: ft=erlang ts=4 sw=4 et
+
+{application, coffer, [
+    {description, "Blob strongbox"},
+    {vsn, "0.1"},
+    {registered, []},
+    {applications, [kernel, stdlib, lager, gproc]},
+    {included_applications, [crypto, public_key, ssl, ranch, cowboy]},
+    {mod, { coffer_app, []}},
+    {env, []}
+]}.
