@@ -10,6 +10,7 @@
 dispatch_rules(Prefix0) ->
     Rules = [{[], coffer_http_root, []},
              {[container], coffer_http_container, []},
+             {[container, <<"stat">>], coffer_http_stat, []},
              {[container, blob], coffer_http_blob, []}],
 
     case maybe_prefix(Prefix0) of
