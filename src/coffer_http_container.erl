@@ -98,17 +98,11 @@ terminate(_Req, _State) ->
 %% ---
 
 get_blob_list(Pid) ->
-    Values = coffer:all(Pid),
-    FormatedValues = lists:map(
-        fun({BlobRef, Size}) ->
-            [
-                {<<"blobRef">>, BlobRef},
-                {<<"size">>, Size}
-            ]
-        end,
-        Values
-    ),
-    FormatedValues.
+    Values = coffer:foldl(Pid, fun({BlobRef, Size}, Acc) ->
+                    [[{<<"blobref">>, BlobRef},
+                      {<<"size">>, Size}] |Acc]
+            end, []),
+    lists:reverse(Values).
 
 multipart_data(Req) ->
     case cowboy_req:multipart_data(Req) of
