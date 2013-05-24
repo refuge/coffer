@@ -42,7 +42,7 @@ stat_response(BlobRefs, Storage, Req) ->
                      PrettyJson, Req).
 
 stat_object(Storage, BlobRefs) ->
-    {ok, Found, _Missing, _Partials} = coffer:stat(Storage, BlobRefs),
+    {ok, {Found, _Missing, _Partials}} = coffer:stat(Storage, BlobRefs),
     MaxUploadSize = lists:max([Size || {_, Size} <- Found]),
     [{<<"stat">>, Found},
       {<<"maxUploadSize">>, MaxUploadSize}].
