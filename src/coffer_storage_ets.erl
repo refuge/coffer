@@ -49,15 +49,20 @@ terminate({_Name, Tid, STid}) ->
     ok.
 
 new_receiver(BlobRef, From, {_Name, Tid, _STid}=State) ->
-    case ets:lookup(Tid, BlobRef) of
-        [] ->
-            ReceiverPid = spawn_link(?MODULE, receive_loop, [BlobRef,
-                                                             From,
-                                                             State]),
-            {ok, {ReceiverPid, nil}, State};
-        [{BlobRef, Blob}|_] ->
-            S = size(Blob),
-            {error, {already_exists, BlobRef, S}, State}
+    case coffer_blob:validate_ref(BlobRef) of
+        ok ->
+            case ets:lookup(Tid, BlobRef) of
+                [] ->
+                    ReceiverPid = spawn_link(?MODULE, receive_loop, [BlobRef,
+                                                                     From,
+                                                                     State]),
+                    {ok, {ReceiverPid, nil}, State};
+                [{BlobRef, Blob}|_] ->
+                    S = size(Blob),
+                    {error, {already_exists, BlobRef, S}, State}
+            end;
+        error ->
+            {error, invalid_blobref}
     end.
 
 receive_loop(BlobRef, From, {Name, _, _}=State) ->
@@ -182,7 +187,17 @@ do_enumerate_loop(BlobRef, To, STid) ->
             end
     end.
 
-stat(BlobRefs, {_Name, _Tid, STid}=State) ->
+stat(BlobRefs0, {_Name, _Tid, STid}=State) ->
+    %% before stating anything check the blob refs
+    BlobRefs = lists:foldl(fun(BlobRef, Acc) ->
+                    case coffer_blob:validate_ref(BlobRef) of
+                        ok ->
+                            Acc ++ [BlobRef];
+                        error ->
+                            Acc
+                    end
+            end, [], BlobRefs0),
+
     {Found, Missing} = lists:foldl(fun(BlobRef, {F, M}) ->
                     case ets:lookup(STid, BlobRef) of
                         [{BlobRef, _Size}=KV] ->
