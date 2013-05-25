@@ -154,13 +154,14 @@ do_stream_loop(Fd, Window, To) ->
             To ! {error, Reason, self()}
     end.
 
-delete(BlobRef, #ldst{path=Path}=State) ->
+delete(BlobRef, #ldst{name=Name, path=Path}=State) ->
     BlobPath = coffer_blob:path(Path, BlobRef),
 
     case file:is_file(BlobPath) of
         true ->
             case file:delete(BlobPath) of
                 ok ->
+                    coffer_storage:notify(Name, {deleted, BlobRef}),
                     {ok, State};
                 {error, Reason} ->
                     lager:error("Error deleting ~p: ~p~n", [BlobRef,
