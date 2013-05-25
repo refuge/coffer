@@ -51,9 +51,8 @@ new_receiver(BlobRef, From, #ldst{path=Path}=State) ->
             BlobPath = coffer_blob:path(Path, BlobRef),
             case filelib:is_regular(BlobPath) of
                 true ->
-                    {ok, FileInfo} = file:read_file_info(BlobPath),
-                    #file_info{size=S} = FileInfo,
-                    {error, {already_exists, BlobRef, S}, State};
+                    Size = file_size(BlobPath),
+                    {error, {already_exists, BlobRef, Size}, State};
                 _ ->
                     ReceiverPid = spawn_link(?MODULE, receive_loop, [BlobRef,
                                                                      BlobPath,
@@ -98,10 +97,8 @@ do_receive_loop(FD, TmpBlobPath, BlobRef, BlobPath, From,
             case file:rename(TmpBlobPath, BlobPath) of
                 ok ->
                     coffer_storage:notify(Name, {uploaded, BlobRef}),
-                    {ok, FileInfo} = file:read_file_info(BlobPath),
-                    #file_info{size=S} = FileInfo,
-                    coffer_storage:notify(Name, {uploaded, BlobRef}),
-                    From ! {ok, self(), S};
+                    Size = file_size(BlobPath),
+                    From ! {ok, self(), Size};
                 {error, Error} ->
                     From ! {error, Error}
             end;
