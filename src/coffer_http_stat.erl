@@ -36,10 +36,9 @@ terminate(_Req, _State) ->
 
 stat_response(BlobRefs, Storage, Req) ->
     JsonObj = stat_object(Storage, BlobRefs),
-    Json = jsx:encode(JsonObj),
-    PrettyJson = jsx:prettify(Json),
+    {Json, Req1} = coffer_http_util:to_json(JsonObj, Req),
     cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>}],
-                     PrettyJson, Req).
+                     Json, Req1).
 
 stat_object(Storage, BlobRefs) ->
     {ok, {Found, _Missing, Partials}} = coffer:stat(Storage, BlobRefs),
