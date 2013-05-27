@@ -154,7 +154,7 @@ do_stream_loop(Fd, Window, To) ->
 delete(BlobRef, #ldst{name=Name, path=Path}=State) ->
     BlobPath = coffer_blob:path(Path, BlobRef),
 
-    case file:is_file(BlobPath) of
+    case filelib:is_file(BlobPath) of
         true ->
             case file:delete(BlobPath) of
                 ok ->
