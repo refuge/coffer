@@ -9,6 +9,7 @@
 
 dispatch_rules(Prefix0) ->
     Rules = [{[], coffer_http_root, []},
+             {[<<"containers">>], coffer_http_containers, []},
              {[container], coffer_http_container, []},
              {[container, <<"stat">>], coffer_http_stat, []},
              {[container, blob], coffer_http_blob, []}],

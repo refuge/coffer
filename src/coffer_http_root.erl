@@ -18,16 +18,29 @@ handle(Req, State) ->
     {ok, Req3, State}.
 
 %%
-
+maybe_process(<<"HEAD">>, Req) ->
+    cowboy_req:reply(200, [{<<"Content-Type">>,
+                            <<"application/json">>}], <<>>, Req);
 maybe_process(<<"GET">>, Req) ->
-    Containers = coffer:list_storages(),
-
-    Json = jsx:encode([{<<"containers">>,Containers}]),
+    Json = jsx:encode(server_info()),
     PrettyJson = jsx:prettify(Json),
-
-    cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>}], PrettyJson, Req);
+    cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>}],
+                     PrettyJson, Req);
 maybe_process(_, Req) ->
-    coffer_http_util:not_allowed([<<"GET">>], Req).
+    coffer_http_util:not_allowed([<<"GET">>, <<"HEAD">>], Req).
 
 terminate(_Req, _State) ->
     ok.
+
+
+server_info() ->
+    [{<<"server">>, <<"coffer">>},
+      {<<"version">>, coffer_version()}].
+
+coffer_version() ->
+    case application:get_key(coffer, vsn) of
+        {ok, Version} ->
+            list_to_binary(Version);
+        _ ->
+            << "0.0.0" >>
+    end.
