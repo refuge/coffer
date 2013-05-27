@@ -112,7 +112,6 @@ normalize_dir(L) ->
         true ->
             Dir
     end.
-
 %
 % Func is a
 %   fun(State) -> {Data, NewState}

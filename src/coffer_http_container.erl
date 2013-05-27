@@ -62,10 +62,10 @@ maybe_process(StorageName, <<"PUT">>, Req) ->
                 { <<"received">>, Success },
                 { <<"errors">>, Errors }
             ],
-            Json = jsx:encode(StatusMessage),
-            PrettyJson = jsx:prettify(Json),
-
-            cowboy_req:reply(201, [{<<"Content-Type">>, <<"application/json">>}], PrettyJson, Req2)
+            {Json, Req3} = coffer_http_util:to_json(StatusMessage,
+                                                    Req2),
+            cowboy_req:reply(201, [{<<"Content-Type">>, <<"application/json">>}],
+                             Json, Req3)
     end;
 maybe_process(StorageName, <<"GET">>, Req) ->
     case coffer:get_storage(StorageName) of
@@ -84,10 +84,10 @@ maybe_process(StorageName, <<"GET">>, Req) ->
                     {<<"blobs">>, BlobList}
                 ]
             }],
-            Json = jsx:encode(ReturnedData),
-            PrettyJson = jsx:prettify(Json),
-
-            cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>}], PrettyJson, Req)
+            {Json, Req1} = coffer_http_util:to_json(ReturnedData,
+                                                    Req),
+            cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>}],
+                             Json, Req1)
     end;
 maybe_process(_, _, Req) ->
     coffer_http_util:not_allowed([<<"GET">>, <<"PUT">>], Req).

@@ -23,9 +23,9 @@ maybe_process(<<"HEAD">>, Req) ->
                             <<"application/json">>}], <<>>, Req);
 maybe_process(<<"GET">>, Req) ->
     Json = jsx:encode(server_info()),
-    PrettyJson = jsx:prettify(Json),
+    {Json1, Req1} = coffer_http_util:maybe_prettify_json(Json, Req),
     cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>}],
-                     PrettyJson, Req);
+                     Json1, Req1);
 maybe_process(_, Req) ->
     coffer_http_util:not_allowed([<<"GET">>, <<"HEAD">>], Req).
 

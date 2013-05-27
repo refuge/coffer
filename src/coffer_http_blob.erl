@@ -39,9 +39,8 @@ maybe_process(StorageName, BlobRef, <<"DELETE">>, false, Req) ->
                             ]
                         }
                     ],
-                    Json = jsx:encode(StatusMessage),
-                    PrettyJson = jsx:prettify(Json),
-                    cowboy_req:reply(202, [], PrettyJson, Req);
+                    {Json, Req1} = coffer_http_util:to_json(StatusMessage),
+                    cowboy_req:reply(202, [], Json, Req1);
                 {error, not_found} ->
                     coffer_http_util:not_found(Req)
             end
@@ -66,21 +65,24 @@ maybe_process(StorageName, BlobRef, <<"PUT">>, true, Req) ->
                                     ]
                                 }
                             ],
-                            Json = jsx:encode(StatusMessage),
-                            PrettyJson = jsx:prettify(Json),
-                            cowboy_req:reply(201, [], PrettyJson, Req2);
+                            {Json, Req3} = coffer_http_util:to_json(StatusMessage,
+                                                                    Req2),
+                            cowboy_req:reply(201, [], Json, Req3);
                         {Error, Req2} ->
                             ErrorMessage = <<"CHANGEME! ERROR DURING UPLOAD!">>,
-                            lager:error("problem uploading blob id ~p with error: ~p", [BlobRef, Error]),
+                            lager:error("problem uploading blob id ~p: ~p",
+                                        [BlobRef, Error]),
                             cowboy_req:reply(500, [], ErrorMessage, Req2)
                     end;
                 {error, {already_exists, _, _}} ->
                     ErrorMessage = <<"CHANGME! ALREADY EXIST ERROR!">>,
-                    lager:error("problem uploading blob id ~p with error: ~p", [BlobRef, already_exists]),
+                    lager:error("problem uploading blob id ~p with error: ~p",
+                                [BlobRef, already_exists]),
                     cowboy_req:reply(409, [], ErrorMessage, Req);
                 UnknownError ->
                     ErrorMessage = <<"CHANGME! UPLOAD UNKOWN ERROR!">>,
-                    lager:error("problem uploading blob id ~p with error: ~p", [BlobRef, UnknownError]),
+                    lager:error("problem uploading blob id ~p with error: ~p",
+                                [BlobRef, UnknownError]),
                     cowboy_req:reply(500, [], ErrorMessage, Req)
             end
     end;

@@ -20,12 +20,10 @@ handle(Req, State) ->
 %%
 maybe_process(<<"GET">>, Req) ->
     Containers = coffer:list_storages(),
-
-    Json = jsx:encode([{<<"containers">>,Containers}]),
-    PrettyJson = jsx:prettify(Json),
-
+    JsonObj = [{<<"containers">>, Containers}],
+    {Json, Req1} = coffer_http_util:to_json(JsonObj, Req),
     cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>}],
-                     PrettyJson, Req);
+                     Json, Req1);
 maybe_process(_, Req) ->
     coffer_http_util:not_allowed([<<"GET">>], Req).
 
