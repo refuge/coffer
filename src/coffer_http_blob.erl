@@ -39,7 +39,8 @@ maybe_process(StorageName, BlobRef, <<"DELETE">>, false, Req) ->
                             ]
                         }
                     ],
-                    {Json, Req1} = coffer_http_util:to_json(StatusMessage),
+                    {Json, Req1} =  coffer_http_util:to_json(
+                            StatusMessage, Req),
                     cowboy_req:reply(202, [], Json, Req1);
                 {error, not_found} ->
                     coffer_http_util:not_found(Req)
