@@ -7,7 +7,7 @@
 
 -export([init/3]).
 -export([handle/2]).
--export([terminate/2]).
+-export([terminate/3]).
 
 init(_Transport, Req, []) ->
     {ok, Req, undefined}.
@@ -27,5 +27,5 @@ maybe_process(<<"GET">>, Req) ->
 maybe_process(_, Req) ->
     coffer_http_util:not_allowed([<<"GET">>], Req).
 
-terminate(_Req, _State) ->
+terminate(_Reason, _Req, _State) ->
     ok.

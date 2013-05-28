@@ -7,7 +7,7 @@
 
 -export([init/3]).
 -export([handle/2]).
--export([terminate/2]).
+-export([terminate/3]).
 
 init(_Transport, Req, []) ->
     {ok, Req, undefined}.
@@ -73,36 +73,44 @@ maybe_process(StorageName, <<"GET">>, Req) ->
             coffer_http_util:not_found(Req);
         {error, Reason} ->
             coffer_http_util:error(Reason, Req);
-        _ ->
-            Pid = coffer:get_storage(StorageName),
+        Storage ->
+            {ok, EnumeratePid} = coffer:start_enumerate(Storage),
+            BodyFun = fun(Socket, Transport) ->
+                    StartBody =  <<"{\n\"container\": {\n",
+                                   "\"name\": \"", StorageName/binary, "\",\n",
+                                   "\"blobs\": [\n" >>,
 
-            BlobList = get_blob_list(Pid),
-
-            ReturnedData = [{
-                <<"container">>, [
-                    {<<"name">>, StorageName},
-                    {<<"blobs">>, BlobList}
-                ]
-            }],
-            {Json, Req1} = coffer_http_util:to_json(ReturnedData,
-                                                    Req),
-            cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>}],
-                             Json, Req1)
+                    Transport:send(Socket, StartBody),
+                    do_enumerate(EnumeratePid, Socket, Transport, <<"">>),
+                    Transport:send(Socket, << "\n]\n}}" >>),
+                    ok
+            end,
+            cowboy_req:reply(200, [{<<"Content-Type">>,
+                                    <<"application/json">>}],
+                             BodyFun, Req)
     end;
 maybe_process(_, _, Req) ->
     coffer_http_util:not_allowed([<<"GET">>, <<"PUT">>], Req).
 
-terminate(_Req, _State) ->
+terminate(_Reason, _Req, _State) ->
     ok.
 
 %% ---
 
-get_blob_list(Pid) ->
-    Values = coffer:foldl(Pid, fun({BlobRef, Size}, Acc) ->
-                    [[{<<"blobref">>, BlobRef},
-                      {<<"size">>, Size}] |Acc]
-            end, []),
-    lists:reverse(Values).
+do_enumerate(EnumeratePid, Socket, Transport, Pre) ->
+    case coffer:enumerate(EnumeratePid) of
+        done ->
+            ok;
+        {error, Reason} ->
+            Json = jsx:encode([{<<"error">>, Reason}]),
+            Transport:send(Socket, [Pre, Json]),
+            ok;
+        {ok, {BlobRef, Size}} ->
+            Json = jsx:encode([{<<"blobref">>, BlobRef},
+                               {<<"size">>, Size}]),
+            Transport:send(Socket, [Pre, Json]),
+            do_enumerate(EnumeratePid, Socket, Transport, <<",\n">>)
+    end.
 
 multipart_data(Req) ->
     case cowboy_req:multipart_data(Req) of

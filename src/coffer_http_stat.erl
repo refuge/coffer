@@ -7,7 +7,7 @@
 
 -export([init/3]).
 -export([handle/2]).
--export([terminate/2]).
+-export([terminate/3]).
 
 
 init(_Transport, Req, []) ->
@@ -31,7 +31,7 @@ handle_stat(Storage, <<"POST">>, Req) ->
 handle_stat(_, _, Req) ->
     coffer_http_util:not_allowed([<<"GET">>, <<"POST">>], Req).
 
-terminate(_Req, _State) ->
+terminate(_Reason, _Req, _State) ->
     ok.
 
 stat_response(BlobRefs, Storage, Req) ->

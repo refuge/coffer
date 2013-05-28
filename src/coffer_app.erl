@@ -26,16 +26,17 @@ maybe_start_http(true) ->
 maybe_start_http(false) ->
     DispatchRules = coffer_http:dispatch_rules(get_app_env(api_prefix)),
     Dispatch = [{'_', DispatchRules}],
+    Dispatch1 = cowboy_router:compile(Dispatch),
     DefaultListener = {http, http, 100, [{port, 8080}]},
     Listeners = get_app_env(http_listeners, [DefaultListener]),
 
     lists:foreach(fun
             ({http, Ref, NbAcceptors, Opts}) ->
                 {ok, _} = cowboy:start_http(Ref, NbAcceptors, Opts,
-                                            [{dispatch, Dispatch}]);
+                                            [{env, [{dispatch, Dispatch1}]}]);
             ({https, Ref, NbAcceptors, Opts}) ->
                 {ok, _} = cowboy:start_https(Ref, NbAcceptors, Opts,
-                                            [{dispatch, Dispatch}])
+                                            [{env, [{dispatch, Dispatch1}]}])
         end, Listeners),
     ok.
 

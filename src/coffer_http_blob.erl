@@ -7,7 +7,7 @@
 
 -export([init/3]).
 -export([handle/2]).
--export([terminate/2]).
+-export([terminate/3]).
 
 -compile([{parse_transform, lager_transform}]).
 
@@ -18,9 +18,10 @@ handle(Req, State) ->
     {Method, Req2} = cowboy_req:method(Req),
     {StorageName, Req3} = cowboy_req:binding(container, Req2),
     {BlobRef, Req4} = cowboy_req:binding(blob, Req3),
-    {HasBody, Req5} = cowboy_req:has_body(Req4),
-    {ok, Req6} = maybe_process(StorageName, BlobRef, Method, HasBody, Req5),
-    {ok, Req6, State}.
+    HasBody = cowboy_req:has_body(Req4),
+    {ok, Req5} = maybe_process(StorageName, BlobRef, Method, HasBody,
+                               Req4),
+    {ok, Req5, State}.
 
 maybe_process(StorageName, BlobRef, <<"DELETE">>, false, Req) ->
     case coffer:get_storage(StorageName) of
@@ -108,7 +109,7 @@ maybe_process(StorageName, BlobRef, <<"GET">>, false, Req) ->
 maybe_process(_, _, _, _, Req) ->
     coffer_http_util:not_allowed([<<"GET">>, <<"PUT">>, <<"DELETE">>], Req).
 
-terminate(_Req, _State) ->
+terminate(_Reason, _Req, _State) ->
     ok.
 
 %% ---

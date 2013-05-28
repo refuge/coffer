@@ -8,14 +8,14 @@
 -export([dispatch_rules/1]).
 
 dispatch_rules(Prefix0) ->
-    Rules = [{[], coffer_http_root, []},
-             {[<<"containers">>], coffer_http_containers, []},
-             {[container], coffer_http_container, []},
-             {[container, <<"stat">>], coffer_http_stat, []},
-             {[container, blob], coffer_http_blob, []}],
+    Rules = [{"/", coffer_http_root, []},
+             {"/containers", coffer_http_containers, []},
+             {"/:container", coffer_http_container, []},
+             {"/:container/stat", coffer_http_stat, []},
+             {"/:container/:blob", coffer_http_blob, []}],
 
     case maybe_prefix(Prefix0) of
-        [] ->
+        "" ->
             Rules;
         Prefix ->
             lists:reverse(lists:foldl(fun({Pattern, Mod, Args}, Acc) ->
@@ -26,7 +26,7 @@ dispatch_rules(Prefix0) ->
 
 
 %% internal
-maybe_prefix(Prefix) when is_binary(Prefix) ->
-    [Prefix];
+maybe_prefix(Prefix) when is_list(Prefix) ->
+    Prefix;
 maybe_prefix(_) ->
-    [].
+    "".
