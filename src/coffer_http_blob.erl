@@ -94,13 +94,14 @@ maybe_process(StorageName, BlobRef, <<"GET">>, false, Req) ->
             coffer_http_util:not_found(Req);
         {error, Reason} ->
             coffer_http_util:error(Reason, Req);
-        _ ->
-            Storage = coffer:get_storage(StorageName),
-
+        Storage ->
             case coffer:new_stream(Storage, BlobRef) of
                 {ok, Stream} ->
-                    {ok, Req2} = cowboy_req:chunked_reply(200, Req),
-                    stream_out_blob(Stream, Req2);
+                    BodyFun = fun(Socket, Transport) ->
+                        do_stream_out_blob(Stream, Socket, Transport),
+                        ok
+                    end,
+                    cowboy_req:reply(200, [], BodyFun, Req);
                 {error, Error} ->
                     lager:error("Error fetching the blob ~p with reason: ~p", [BlobRef, Error]),
                     coffer_http_util:not_found(Req)
@@ -132,27 +133,16 @@ stream_in_blob(Receiver, Req) ->
             end
     end.
 
-stream_out_blob(Stream, Req) ->
-    Result = case coffer:fetch(Stream) of
-        {ok, Value} ->
-            Value;
+do_stream_out_blob(Stream, Socket, Transport) ->
+    case coffer:fetch(Stream) of
+        {ok, coffer_eob} ->
+            ok;
         {error, Error} ->
-            {error, Error}
-    end,
-    send_chunk(Stream, Result, Req).
-
-send_chunk(_Stream, {error, Error}, Req) ->
-    lager:error("error during fetching: ~p", [Error]),
-    {ok, Req};
-send_chunk(_Stream, coffer_eob, Req) ->
-    {ok, Req};
-send_chunk(Stream, Bin, Req) ->
-    ok = cowboy_req:chunk(Bin, Req),
-    Result = case coffer:fetch(Stream) of
-        {ok, Value} ->
-            Value;
-        {error, Error} ->
-            {error, Error}
-    end,
-    send_chunk(Stream, Result, Req).
+            Json = jsx:encode([{<<"error">>, Error}]),
+            Transport:send(Socket, Json),
+            ok;
+        {ok, Bin} ->
+            Transport:send(Socket, Bin),
+            do_stream_out_blob(Stream, Socket, Transport)
+    end.
 
