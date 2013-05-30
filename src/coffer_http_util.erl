@@ -5,8 +5,9 @@
 
 -module(coffer_http_util).
 
--export([not_allowed/2]).
--export([not_found/1, error/2]).
+-export([not_allowed/2,
+         not_found/1,
+         error/2, error/3, error/4]).
 -export([to_json/2]).
 -export([maybe_prettify_json/2]).
 
@@ -28,21 +29,24 @@ not_allowed(AllowedMethods, Req) ->
             ReversedAllowedMethodsWithComaList
     ),
     AllowedMethodsWithComa = iolist_to_binary(AllowedMethodsWithComaList),
-    Json = [{<<"Allow">>, AllowedMethodsWithComa}],
-    {Json1, Req1} = to_json(Json, Req),
-	cowboy_req:reply(405, Json1, <<"Not allowed">>, Req1).
+    Extra = [{<<"Allow">>, AllowedMethodsWithComa}],
+    error(405, [{<<"error">>, <<"not_allowed">>}], Extra, Req).
 
 not_found(Req) ->
-    ReturnedData = [{<<"error">>, <<"not found">>}],
-    {Json, Req1} = to_json(ReturnedData, Req),
-    cowboy_req:reply(404, [{<<"Content-Type">>, <<"application/json">>}],
-                     Json, Req1).
+    error(404, [{<<"error">>, <<"not found">>}], Req).
 
 error(Reason, Req) ->
+    error(500, Reason, [], Req).
+
+
+error(Status, Reason, Req) ->
+    error(Status, Reason, [], Req).
+
+error(Status, Reason, Extra, Req) ->
     ReasonInBinary = iolist_to_binary(io_lib:format("~p", [Reason])),
-    ReturnedData = [{<<"error">>, ReasonInBinary}],
+    ReturnedData = [{<<"error">>, ReasonInBinary}] ++ Extra,
     {Json, Req1} = to_json(ReturnedData, Req),
-    cowboy_req:reply(500, [{<<"Content-Type">>, <<"application/json">>}],
+    cowboy_req:reply(Status, [{<<"Content-Type">>, <<"application/json">>}],
                      Json, Req1).
 
 to_json(Json, Req) ->

@@ -194,4 +194,3 @@ get_part(Pid, end_of_part, BlobRef, Receiver, Acc, Req) ->
 
 get_part(_, eof, _, _, Acc, Req) ->
     {Acc, Req}.
-
