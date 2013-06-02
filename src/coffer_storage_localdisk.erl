@@ -18,6 +18,7 @@
          delete/2,
          enumerate/2,
          stat/2]).
+-export([blob_exists/2]).
 
 
 -export([receive_loop/4]).
@@ -254,3 +255,14 @@ file_size(Path) ->
     {ok, FileInfo} = file:read_file_info(Path),
     #file_info{size=Size} = FileInfo,
     Size.
+
+blob_exists(BlobRef, #ldst{path=Path}) ->
+    BlobPath = coffer_blob:path(Path, BlobRef),
+
+    case filelib:is_file(BlobPath) of
+        true ->
+            ok;
+        _ ->
+            {error, not_found}
+    end.
+

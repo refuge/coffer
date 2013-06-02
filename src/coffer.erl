@@ -15,6 +15,7 @@
          stat/2,
          start_enumerate/1, enumerate/1, enumerate/2,
          foldl/3, all/1, foreach/2]).
+-export([blob_exists/2]).
 
 -define(DEFAULT_WINDOW, 4096).
 
@@ -175,6 +176,8 @@ foreach(StoragePid, Func) ->
             ok
     end.
 
+blob_exists(StoragePid, BlobRef) ->
+    coffer_storage:blob_exists(StoragePid, BlobRef).
 
 %% ------------------------------------------------------------------
 %% Internal functions

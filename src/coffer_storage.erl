@@ -20,6 +20,7 @@
 -export([register_receiver/1, unregister_receiver/1,
          lookup_receiver/1]).
 -export([subscribe/1, unsubscribe/1, notify/2]).
+-export([blob_exists/2]).
 
 
 %% ------------------------------------------------------------------
@@ -86,6 +87,9 @@ unregister_receiver(BlobRef) ->
 
 lookup_receiver(BlobRef) ->
     coffer_util:lookup({blob, BlobRef, receiver}).
+
+blob_exists(Pid, BlobRef) ->
+    gen_server:call(Pid, {blob_exists, BlobRef}).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
@@ -162,6 +166,10 @@ handle_call({stat, BlobRefs}, _From, #ss{backend=Backend, state=State}=SS) ->
         {error, Reason, NewState} ->
             {reply, {error, Reason}, SS#ss{state=NewState}}
     end;
+handle_call({blob_exists, BlobRef}, _From, #ss{backend=Backend, state=State}=SS) ->
+    Result = Backend:blob_exists(BlobRef, State),
+    % blob_exists should never change the state
+    {reply, Result, SS};
 
 handle_call(_Request, _From, State) ->
     {reply, unknown_call, State}.

@@ -16,8 +16,8 @@
 
 %% callbacks -----------------------------------------------------------------
 
-% INIT/STOP
-
+%% INIT/STOP
+%%
 -callback init(StorageName :: binary(), Config :: list()) ->
     {ok, State :: any()}
     | {error, Reason :: any()}.
@@ -27,9 +27,8 @@
     | {error, Reason :: any()}.
 
 
-
-% CHANGE/ERASE A BLOB
-
+%% CHANGE/ERASE A BLOB
+%%
 -callback new_receiver(BlobRef :: blob_ref(), From :: pid(),
                        State :: any()) ->
     {ok, NewState :: any()}
@@ -40,12 +39,16 @@
     | {error, Reason :: any()}.
 
 
-% GET BLOB
-
+%% GET BLOB
+%%
 -callback new_stream({BlobRef :: blob_ref(), Window :: integer()}, To :: pid(),
                 State :: any()) ->
     {ok, StreamPid :: pid()}
     | {error, any()}.
+
+-callback blob_exists(BlobRef :: blob_ref(), State :: any()) ->
+    ok
+    | {error, Reason :: any()}.
 
 
 %% ENUMERATE
