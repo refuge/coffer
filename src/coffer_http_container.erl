@@ -18,6 +18,13 @@ handle(Req, State) ->
     {ok, Req4} = maybe_process(StorageName, Method, Req3),
     {ok, Req4, State}.
 
+maybe_process(StorageName, <<"HEAD">>, Req) ->
+    case coffer:get_storage(StorageName) of
+        {error, not_found} ->
+            cowboy_req:reply(404, [], [], Req);
+        _ ->
+            cowboy_req:reply(200, [], [], Req)
+    end;
 maybe_process(StorageName, <<"PUT">>, Req) ->
     case coffer:get_storage(StorageName) of
         {error, not_found} ->
@@ -90,7 +97,7 @@ maybe_process(StorageName, <<"GET">>, Req) ->
                              BodyFun, Req)
     end;
 maybe_process(_, _, Req) ->
-    coffer_http_util:not_allowed([<<"GET">>, <<"PUT">>], Req).
+    coffer_http_util:not_allowed([<<"HEAD">>, <<"GET">>, <<"PUT">>], Req).
 
 terminate(_Reason, _Req, _State) ->
     ok.

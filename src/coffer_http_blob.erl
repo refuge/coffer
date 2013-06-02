@@ -23,6 +23,18 @@ handle(Req, State) ->
                                Req4),
     {ok, Req5, State}.
 
+maybe_process(StorageName, BlobRef, <<"HEAD">>, false, Req) ->
+    case coffer:get_storage(StorageName) of
+        {error, Reason} ->
+            coffer_http_util:error(Reason, Req);
+        StoragePid ->
+            case coffer:blob_exists(StoragePid, BlobRef) of
+                ok ->
+                    cowboy_req:reply(200, [], [], Req);
+                {error, not_found} ->
+                    cowboy_req:reply(404, [], [], Req)
+            end
+    end;
 maybe_process(StorageName, BlobRef, <<"DELETE">>, false, Req) ->
     case coffer:get_storage(StorageName) of
         {error, not_found} ->
@@ -108,7 +120,7 @@ maybe_process(StorageName, BlobRef, <<"GET">>, false, Req) ->
             end
     end;
 maybe_process(_, _, _, _, Req) ->
-    coffer_http_util:not_allowed([<<"GET">>, <<"PUT">>, <<"DELETE">>], Req).
+    coffer_http_util:not_allowed([<<"HEAD">>, <<"GET">>, <<"PUT">>, <<"DELETE">>], Req).
 
 terminate(_Reason, _Req, _State) ->
     ok.
