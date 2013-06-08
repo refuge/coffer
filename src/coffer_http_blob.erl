@@ -64,7 +64,6 @@ maybe_process(StorageName, BlobRef, <<"PUT">>, Req) ->
         {error, Reason} ->
             coffer_http_util:error(Reason, Req);
         _ ->
-            lager:info("start upload on ~p~n", [StorageName]),
             StoragePid = coffer:get_storage(StorageName),
             case coffer:new_upload(StoragePid, BlobRef) of
                 {ok, Receiver} ->
@@ -129,21 +128,15 @@ stream_in_blob(Receiver, Req) ->
         {ok, Bin, Req2} ->
             case coffer:upload(Receiver, Bin) of
                 {ok, Receiver1} ->
-                     lager:info("uploaded ~p~n", [Bin]),
                     stream_in_blob(Receiver1, Req2);
                 Error ->
-                    lager:info("got this fucking error: ~p~n", [Error]),
                     {Error, Req2}
             end;
         {done, Req2} ->
             case coffer:upload(Receiver, eob) of
                 {ok, UploadSize} ->
-                    lager:info("stop upload", []),
-
                     {ok, UploadSize, Req2};
                 Error ->
-                    lager:info("got this fucking eob error: ~p~n", [Error]),
-
                     {Error, Req2}
             end
     end.
