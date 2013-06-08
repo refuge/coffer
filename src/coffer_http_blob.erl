@@ -18,10 +18,21 @@ handle(Req, State) ->
     {Method, Req2} = cowboy_req:method(Req),
     {StorageName, Req3} = cowboy_req:binding(container, Req2),
     {BlobRef, Req4} = cowboy_req:binding(blob, Req3),
-    lager:info("get ~p on ~p/~p~n", [Method, StorageName, BlobRef]),
     {ok, Req5} = maybe_process(StorageName, BlobRef, Method, Req4),
     {ok, Req5, State}.
 
+maybe_process(StorageName, BlobRef, <<"HEAD">>, Req) ->
+    case coffer:get_storage(StorageName) of
+        {error, Reason} ->
+            coffer_http_util:error(Reason, Req);
+        StoragePid ->
+            case coffer:blob_exists(StoragePid, BlobRef) of
+                ok ->
+                    cowboy_req:reply(200, [], [], Req);
+                {error, not_found} ->
+                    cowboy_req:reply(404, [], [], Req)
+            end
+    end;
 maybe_process(StorageName, BlobRef, <<"DELETE">>, Req) ->
     case coffer:get_storage(StorageName) of
         {error, not_found} ->
@@ -106,7 +117,7 @@ maybe_process(StorageName, BlobRef, <<"GET">>, Req) ->
             end
     end;
 maybe_process(_, _, _, Req) ->
-    coffer_http_util:not_allowed([<<"GET">>, <<"PUT">>, <<"DELETE">>], Req).
+    coffer_http_util:not_allowed([<<"HEAD">>, <<"GET">>, <<"PUT">>, <<"DELETE">>], Req).
 
 terminate(_Reason, _Req, _State) ->
     ok.
@@ -149,4 +160,3 @@ do_stream_out_blob(Stream, Socket, Transport) ->
             Transport:send(Socket, Bin),
             do_stream_out_blob(Stream, Socket, Transport)
     end.
-

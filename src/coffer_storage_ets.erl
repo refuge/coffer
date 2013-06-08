@@ -16,6 +16,7 @@
          delete/2,
          enumerate/2,
          stat/2]).
+-export([blob_exists/2]).
 
 %% ------------------------------------------------------------------
 %% Internal API
@@ -223,3 +224,12 @@ stat(BlobRefs0, {_Name, _Tid, STid}=State) ->
     end,
     {ok, {lists:reverse(Found), lists:reverse(Missing1),
           lists:reverse(Partials)}, State}.
+
+blob_exists(BlobRef, {_Name, Tid, _STid}) ->
+    case ets:member(Tid, BlobRef) of
+        true ->
+            ok;
+        _ ->
+            {error, not_found}
+    end.
+
