@@ -18,12 +18,11 @@ handle(Req, State) ->
     {Method, Req2} = cowboy_req:method(Req),
     {StorageName, Req3} = cowboy_req:binding(container, Req2),
     {BlobRef, Req4} = cowboy_req:binding(blob, Req3),
-    HasBody = cowboy_req:has_body(Req4),
-    {ok, Req5} = maybe_process(StorageName, BlobRef, Method, HasBody,
-                               Req4),
+    lager:info("get ~p on ~p/~p~n", [Method, StorageName, BlobRef]),
+    {ok, Req5} = maybe_process(StorageName, BlobRef, Method, Req4),
     {ok, Req5, State}.
 
-maybe_process(StorageName, BlobRef, <<"DELETE">>, false, Req) ->
+maybe_process(StorageName, BlobRef, <<"DELETE">>, Req) ->
     case coffer:get_storage(StorageName) of
         {error, not_found} ->
             coffer_http_util:not_found(Req);
@@ -36,7 +35,7 @@ maybe_process(StorageName, BlobRef, <<"DELETE">>, false, Req) ->
                     StatusMessage = [
                         { <<"deleted">>,
                             [
-                                {<<"blobRef">>, BlobRef}
+                                {<<"blobref">>, BlobRef}
                             ]
                         }
                     ],
@@ -47,13 +46,14 @@ maybe_process(StorageName, BlobRef, <<"DELETE">>, false, Req) ->
                     coffer_http_util:not_found(Req)
             end
     end;
-maybe_process(StorageName, BlobRef, <<"PUT">>, true, Req) ->
+maybe_process(StorageName, BlobRef, <<"PUT">>, Req) ->
     case coffer:get_storage(StorageName) of
         {error, not_found} ->
             coffer_http_util:not_found(Req);
         {error, Reason} ->
             coffer_http_util:error(Reason, Req);
         _ ->
+            lager:info("start upload on ~p~n", [StorageName]),
             StoragePid = coffer:get_storage(StorageName),
             case coffer:new_upload(StoragePid, BlobRef) of
                 {ok, Receiver} ->
@@ -62,7 +62,7 @@ maybe_process(StorageName, BlobRef, <<"PUT">>, true, Req) ->
                             StatusMessage = [
                                 { <<"received">>, [
                                     [
-                                        {<<"blobRef">>, BlobRef},
+                                        {<<"blobref">>, BlobRef},
                                         {<<"size">>, UploadSize}]
                                     ]
                                 }
@@ -71,24 +71,21 @@ maybe_process(StorageName, BlobRef, <<"PUT">>, true, Req) ->
                                                                     Req2),
                             cowboy_req:reply(201, [], Json, Req3);
                         {Error, Req2} ->
-                            ErrorMessage = <<"CHANGEME! ERROR DURING UPLOAD!">>,
                             lager:error("problem uploading blob id ~p: ~p",
                                         [BlobRef, Error]),
-                            cowboy_req:reply(500, [], ErrorMessage, Req2)
+                            coffer_http_util:error(400, Error, Req2)
                     end;
                 {error, {already_exists, _, _}} ->
-                    ErrorMessage = <<"CHANGME! ALREADY EXIST ERROR!">>,
                     lager:error("problem uploading blob id ~p with error: ~p",
                                 [BlobRef, already_exists]),
-                    cowboy_req:reply(409, [], ErrorMessage, Req);
+                    coffer_http_util:error(409, {error, already_exists}, Req);
                 UnknownError ->
-                    ErrorMessage = <<"CHANGME! UPLOAD UNKOWN ERROR!">>,
                     lager:error("problem uploading blob id ~p with error: ~p",
                                 [BlobRef, UnknownError]),
-                    cowboy_req:reply(500, [], ErrorMessage, Req)
+                     coffer_http_util:error(500, {error, already_exists}, Req)
             end
     end;
-maybe_process(StorageName, BlobRef, <<"GET">>, false, Req) ->
+maybe_process(StorageName, BlobRef, <<"GET">>, Req) ->
     case coffer:get_storage(StorageName) of
         {error, not_found} ->
             coffer_http_util:not_found(Req);
@@ -103,11 +100,12 @@ maybe_process(StorageName, BlobRef, <<"GET">>, false, Req) ->
                     end,
                     cowboy_req:reply(200, [], BodyFun, Req);
                 {error, Error} ->
-                    lager:error("Error fetching the blob ~p with reason: ~p", [BlobRef, Error]),
+                    lager:error("Error fetching the blob ~pn: ~p", [BlobRef,
+                                                                    Error]),
                     coffer_http_util:not_found(Req)
             end
     end;
-maybe_process(_, _, _, _, Req) ->
+maybe_process(_, _, _, Req) ->
     coffer_http_util:not_allowed([<<"GET">>, <<"PUT">>, <<"DELETE">>], Req).
 
 terminate(_Reason, _Req, _State) ->
@@ -120,15 +118,21 @@ stream_in_blob(Receiver, Req) ->
         {ok, Bin, Req2} ->
             case coffer:upload(Receiver, Bin) of
                 {ok, Receiver1} ->
+                     lager:info("uploaded ~p~n", [Bin]),
                     stream_in_blob(Receiver1, Req2);
                 Error ->
+                    lager:info("got this fucking error: ~p~n", [Error]),
                     {Error, Req2}
             end;
         {done, Req2} ->
             case coffer:upload(Receiver, eob) of
                 {ok, UploadSize} ->
+                    lager:info("stop upload", []),
+
                     {ok, UploadSize, Req2};
                 Error ->
+                    lager:info("got this fucking eob error: ~p~n", [Error]),
+
                     {Error, Req2}
             end
     end.

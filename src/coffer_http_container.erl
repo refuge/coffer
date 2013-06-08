@@ -33,7 +33,7 @@ maybe_process(StorageName, <<"PUT">>, Req) ->
                     case Status of
                         {ok, UploadSize} ->
                             [[
-                                {<<"blobRef">>, BlobRef},
+                                {<<"blobref">>, BlobRef},
                                 {<<"size">>, UploadSize}
                             ]|Acc];
                         _ ->
@@ -50,7 +50,7 @@ maybe_process(StorageName, <<"PUT">>, Req) ->
                             Acc;
                         _Error ->
                             [[
-                                {<<"blobRef">>, BlobRef},
+                                {<<"blobref">>, BlobRef},
                                 {<<"reason">>, <<"TBD">>}
                             ]|Acc]
                     end
