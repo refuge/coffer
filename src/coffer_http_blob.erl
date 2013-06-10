@@ -104,11 +104,10 @@ maybe_process(StorageName, BlobRef, <<"GET">>, Req) ->
         Storage ->
             case coffer:new_stream(Storage, BlobRef) of
                 {ok, Stream} ->
-                    BodyFun = fun(Socket, Transport) ->
-                        do_stream_out_blob(Stream, Socket, Transport),
-                        ok
+                    BodyFun = fun(ChunkFun) ->
+                        do_stream_out_blob(Stream, ChunkFun)
                     end,
-                    cowboy_req:reply(200, [], BodyFun, Req);
+                    cowboy_req:reply(200, [], {chunked, BodyFun}, Req);
                 {error, Error} ->
                     lager:error("Error fetching the blob ~pn: ~p", [BlobRef,
                                                                     Error]),
@@ -141,15 +140,15 @@ stream_in_blob(Receiver, Req) ->
             end
     end.
 
-do_stream_out_blob(Stream, Socket, Transport) ->
+do_stream_out_blob(Stream, ChunkFun) ->
     case coffer:fetch(Stream) of
         {ok, coffer_eob} ->
             ok;
         {error, Error} ->
             Json = jsx:encode([{<<"error">>, Error}]),
-            Transport:send(Socket, Json),
+            ChunkFun(Json),
             ok;
         {ok, Bin} ->
-            Transport:send(Socket, Bin),
-            do_stream_out_blob(Stream, Socket, Transport)
+            ChunkFun(Bin),
+            do_stream_out_blob(Stream, ChunkFun)
     end.
