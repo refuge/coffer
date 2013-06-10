@@ -25,7 +25,7 @@ handle_stat(Storage, <<"GET">>, Req) ->
     BlobRefs = [BlobRef || {_, BlobRef} <- KVs],
     stat_response(BlobRefs, Storage, Req1);
 handle_stat(Storage, <<"POST">>, Req) ->
-    {KVs, Req1} = cowboy_req:body_qs(1024000, Req),
+    {ok, KVs, Req1} = cowboy_req:body_qs(1024000, Req),
     BlobRefs = [BlobRef || {_, BlobRef} <- KVs],
     stat_response(BlobRefs, Storage, Req1);
 handle_stat(_, _, Req) ->
