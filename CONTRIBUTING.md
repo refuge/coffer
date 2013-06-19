@@ -91,7 +91,7 @@ mismatch may result in your changes being overwritten.
 
 ### How are decisions made?
 
-Short answer: with pull requests to the docker repository.
+Short answer: with pull requests to the coffer repository.
 
 Coffer is an open-source project under the Apache License 2 with an open
 design philosophy. This means that the repository is the source of truth
