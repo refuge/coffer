@@ -9,7 +9,6 @@
 -export([handle/2]).
 -export([terminate/3]).
 
-
 init(_Transport, Req, []) ->
     {ok, Req, undefined}.
 

@@ -13,7 +13,7 @@
          simple_fetch/2,
          delete/2,
          stat/2,
-         start_enumerate/1, enumerate/1, enumerate/2,
+         start_enumerate/1, enumerate/1, enumerate/2, stop_enumerate/1,
          foldl/3, all/1, foreach/2]).
 -export([blob_exists/2]).
 
@@ -151,6 +151,9 @@ enumerate(EnumeratePid, Timeout) ->
     after Timeout ->
         kill_receiver(EnumeratePid)
     end.
+
+stop_enumerate(EnumeratePid) ->
+    kill_receiver(EnumeratePid).
 
 foldl(StoragePid, Func, InitState) ->
     case start_enumerate(StoragePid) of

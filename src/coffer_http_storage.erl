@@ -9,6 +9,8 @@
 -export([handle/2]).
 -export([terminate/3]).
 
+-define(LIMIT, 16#10000000).
+
 init(_Transport, Req, []) ->
     {ok, Req, undefined}.
 
@@ -81,18 +83,23 @@ maybe_process(StorageName, <<"GET">>, Req) ->
         {error, Reason} ->
             coffer_http_util:error(Reason, Req);
         Storage ->
+            {Limit, Req2} = case cowboy_req:qs_val(<<"limit">>, Req) of
+                {undefined, Req1} -> {?LIMIT, Req1};
+                {L, Req1} -> {list_to_integer(binary_to_list(L)), Req1}
+            end,
             {ok, EnumeratePid} = coffer:start_enumerate(Storage),
             BodyFun = fun(ChunkFun) ->
                     StartBody =  <<"{\"blobs\": [\n" >>,
 
                     ChunkFun(StartBody),
-                    do_enumerate(EnumeratePid, ChunkFun, <<"">>),
+                    do_enumerate(EnumeratePid, ChunkFun, <<"">>, 0,
+                                 Limit - 1),
                     ChunkFun(<< "\n]}" >>),
                     ok
             end,
             cowboy_req:reply(200, [{<<"Content-Type">>,
                                     <<"application/json">>}],
-                             {chunked, BodyFun}, Req)
+                             {chunked, BodyFun}, Req2)
     end;
 maybe_process(_, _, Req) ->
     coffer_http_util:not_allowed([<<"HEAD">>, <<"GET">>, <<"POST">>], Req).
@@ -101,8 +108,11 @@ terminate(_Reason, _Req, _State) ->
     ok.
 
 %% ---
-
-do_enumerate(EnumeratePid, ChunkFun, Pre) ->
+do_enumerate(EnumeratePid, _ChunkFun, _Pre, Count, Limit)
+        when Count > Limit ->
+    coffer:stop_enumerate(EnumeratePid),
+    ok;
+do_enumerate(EnumeratePid, ChunkFun, Pre, Count, Limit) ->
     case coffer:enumerate(EnumeratePid) of
         done ->
             ok;
@@ -114,7 +124,8 @@ do_enumerate(EnumeratePid, ChunkFun, Pre) ->
             Json = jsx:encode([{<<"blobref">>, BlobRef},
                                {<<"size">>, Size}]),
             ChunkFun(iolist_to_binary([Pre, Json])),
-            do_enumerate(EnumeratePid, ChunkFun, <<",\n">>)
+            do_enumerate(EnumeratePid, ChunkFun, <<",\n">>, Count+1,
+                         Limit)
     end.
 
 multipart_data(Req) ->
