@@ -3,7 +3,7 @@
 %%% This file is part of coffer-server released under the Apache license 2.
 %%% See the NOTICE for more information.
 
--module(coffer_http_container).
+-module(coffer_http_storage).
 
 -export([init/3]).
 -export([handle/2]).
@@ -14,7 +14,7 @@ init(_Transport, Req, []) ->
 
 handle(Req, State) ->
     {Method, Req2} = cowboy_req:method(Req),
-    {StorageName, Req3} = cowboy_req:binding(container, Req2),
+    {StorageName, Req3} = cowboy_req:binding(storage, Req2),
     {ok, Req4} = maybe_process(StorageName, Method, Req3),
     {ok, Req4, State}.
 

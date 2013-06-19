@@ -16,7 +16,7 @@ init(_Transport, Req, []) ->
 
 handle(Req, State) ->
     {Method, Req2} = cowboy_req:method(Req),
-    {StorageName, Req3} = cowboy_req:binding(container, Req2),
+    {StorageName, Req3} = cowboy_req:binding(storage, Req2),
     {BlobRef, Req4} = cowboy_req:binding(blob, Req3),
     {ok, Req5} = maybe_process(StorageName, BlobRef, Method, Req4),
     {ok, Req5, State}.

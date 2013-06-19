@@ -3,7 +3,7 @@
 %%% This file is part of coffer-server released under the Apache license 2.
 %%% See the NOTICE for more information.
 
--module(coffer_http_containers).
+-module(coffer_http_storages).
 
 -export([init/3]).
 -export([handle/2]).
@@ -19,8 +19,8 @@ handle(Req, State) ->
 
 %%
 maybe_process(<<"GET">>, Req) ->
-    Containers = coffer:list_storages(),
-    JsonObj = [{<<"containers">>, Containers}],
+    Storages = coffer:list_storages(),
+    JsonObj = [{<<"storages">>, Storages}],
     {Json, Req1} = coffer_http_util:to_json(JsonObj, Req),
     cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>}],
                      Json, Req1);

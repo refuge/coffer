@@ -15,7 +15,7 @@ init(_Transport, Req, []) ->
 
 handle(Req, State) ->
     {Method, Req2} = cowboy_req:method(Req),
-    {StorageName, Req3} = cowboy_req:binding(container, Req2),
+    {StorageName, Req3} = cowboy_req:binding(storage, Req2),
     Storage = coffer:get_storage(StorageName),
     {ok, Req4} = handle_stat(Storage, Method, Req3),
     {ok, Req4, State}.
