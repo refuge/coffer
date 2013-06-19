@@ -153,7 +153,7 @@ enumerate(EnumeratePid, Timeout) ->
     end.
 
 stop_enumerate(EnumeratePid) ->
-    kill_receiver(EnumeratePid).
+    stop_sync(EnumeratePid).
 
 foldl(StoragePid, Func, InitState) ->
     case start_enumerate(StoragePid) of
@@ -210,4 +210,19 @@ kill_receiver(Pid) ->
             {partial, Size};
         {'DOWN', _, process, Pid, Reason}  ->
             {error, Reason}
+    end.
+
+stop_sync(Pid) when not is_pid(Pid)->
+    ok;
+stop_sync(Pid) ->
+    MRef = erlang:monitor(process, Pid),
+    try
+        catch unlink(Pid),
+        catch exit(Pid, stop),
+        receive
+        {'DOWN', MRef, _, _, _} ->
+            ok
+        end
+    after
+        erlang:demonitor(MRef, [flush])
     end.

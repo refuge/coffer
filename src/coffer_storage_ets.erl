@@ -54,7 +54,7 @@ new_receiver(BlobRef, From, {_Name, Tid, _STid}=State) ->
         ok ->
             case ets:lookup(Tid, BlobRef) of
                 [] ->
-                    ReceiverPid = spawn_link(?MODULE, receive_loop, [BlobRef,
+                    ReceiverPid = spawn(?MODULE, receive_loop, [BlobRef,
                                                                      From,
                                                                      State]),
                     {ok, {ReceiverPid, nil}, State};
@@ -114,7 +114,7 @@ do_receive_loop(BlobRef, TmpBlobRef, Self, From, {_Name, Tid, STid}=State) ->
 new_stream({BlobRef, Window}, To, {_Name, Tid, _STid}=State) ->
     case ets:member(Tid, BlobRef) of
         true ->
-            StreamPid = spawn_link(?MODULE, stream_loop, [BlobRef, Window, To,
+            StreamPid = spawn(?MODULE, stream_loop, [BlobRef, Window, To,
                                                           Tid]),
             {ok, StreamPid, State};
         _ ->
@@ -161,7 +161,7 @@ delete(BlobRef, {Name, Tid, _STid}=State) ->
 
 
 enumerate(To, {_Name, _Tid, STid}=State) ->
-    EnumeratePid = spawn_link(?MODULE, enumerate_loop, [To, STid]),
+    EnumeratePid = spawn(?MODULE, enumerate_loop, [To, STid]),
     {ok, EnumeratePid, State}.
 
 enumerate_loop(To, STid) ->

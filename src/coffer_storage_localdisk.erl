@@ -55,10 +55,10 @@ new_receiver(BlobRef, From, #ldst{path=Path}=State) ->
                     Size = file_size(BlobPath),
                     {error, {already_exists, BlobRef, Size}, State};
                 _ ->
-                    ReceiverPid = spawn_link(?MODULE, receive_loop, [BlobRef,
-                                                                     BlobPath,
-                                                                     From,
-                                                                     State]),
+                    ReceiverPid = spawn(?MODULE, receive_loop, [BlobRef,
+                                                                BlobPath,
+                                                                From,
+                                                                State]),
                     {ok, {ReceiverPid, nil}, State}
             end;
         error ->
@@ -116,8 +116,7 @@ new_stream({BlobRef, Window}, To, #ldst{path=Path}=State) ->
         true ->
             case file:open(BlobPath, [read]) of
                 {ok, Fd} ->
-                    StreamPid = spawn_link(?MODULE, stream_loop,
-                                           [Fd, Window, To]),
+                    StreamPid = spawn(?MODULE, stream_loop, [Fd, Window, To]),
                     {ok, StreamPid, State};
                 {error, Reason} ->
                     {error, Reason, State}
@@ -172,7 +171,7 @@ delete(BlobRef, #ldst{name=Name, path=Path}=State) ->
 
 
 enumerate(To, #ldst{path=Path}=State) ->
-    EnumeratePid = spawn_link(?MODULE, enumerate_loop, [To, Path]),
+    EnumeratePid = spawn(?MODULE, enumerate_loop, [To, Path]),
     {ok, EnumeratePid, State}.
 
 enumerate_loop(To, Path) ->
@@ -265,4 +264,3 @@ blob_exists(BlobRef, #ldst{path=Path}) ->
         _ ->
             {error, not_found}
     end.
-
