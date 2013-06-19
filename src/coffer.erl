@@ -128,8 +128,6 @@ simple_fetch(StoragePid, BlobRef) ->
 delete(StoragePid, BlobRef) ->
     coffer_storage:delete(StoragePid, BlobRef).
 
-
-
 stat(StoragePid, BlobRefs) ->
     coffer_storage:stat(StoragePid, BlobRefs).
 
