@@ -7,6 +7,7 @@
 -export([ensure_deps_started/0, ensure_started/1]).
 -export([get_app_env/1, get_app_env/2]).
 
+-include_lib("../deps/hackney/include/hackney.hrl").
 
 %% ===================================================================
 %% Application callbacks
@@ -27,21 +28,35 @@ maybe_start_http(false) ->
     DispatchRules = coffer_http:dispatch_rules(get_app_env(api_prefix)),
     Dispatch = [{'_', DispatchRules}],
     Dispatch1 = cowboy_router:compile(Dispatch),
-    DefaultListener = {http, http, 100, [{port, 8080}]},
-    Listeners = get_app_env(http_listeners, [DefaultListener]),
+    Env = [{env, [{dispatch, Dispatch1}]}],
+    DefaultListener = {"http://127.0.0.1:7000", http, 100, []},
+    Listeners = get_app_env(listeners, [DefaultListener]),
 
-    lists:foreach(fun
-            ({http, Ref, NbAcceptors, Opts}) ->
-                {ok, _} = cowboy:start_http(Ref, NbAcceptors, Opts,
-                                            [{env, [{dispatch, Dispatch1}]}]);
-            ({https, Ref, NbAcceptors, Opts}) ->
-                {ok, _} = cowboy:start_https(Ref, NbAcceptors, Opts,
-                                            [{env, [{dispatch, Dispatch1}]}])
+
+    lists:foreach(fun({UrlStr, Ref, NbAcceptors, Opts}) ->
+                %% parse URL
+                #hackney_url{host=Ip,
+                             port=Port,
+                             scheme=Scheme} = hackney_url:parse_url(UrlStr),
+
+                {ok, ParsedIp} = inet_parse:address(Ip),
+                Opts1 = [{port, Port},
+                         {ip, ParsedIp}] ++ Opts,
+
+                %% start HTTP
+                case Scheme of
+                    http ->
+                        {ok, _} = cowboy:start_http(Ref, NbAcceptors,
+                                                    Opts1, Env);
+                    https ->
+                        {ok, _} = cowboy:start_https(Ref, NbAcceptors,
+                                                     Opts, Env)
+                end
         end, Listeners),
     ok.
 
 is_embedded() ->
-    get_app_env(embedded, false).
+    get_app_env(listeners, []) =:= [].
 
 ensure_deps_started() ->
     {ok, Deps0} = application:get_key(coffer, applications),
