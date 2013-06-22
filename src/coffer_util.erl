@@ -19,6 +19,18 @@
 
 -export([gettempdir/0]).
 
+-ifdef(sha_workaround).
+-define(SHA(Data), crypto:sha(Data)).
+-define(SHA_INIT(), crypto:sha_init()).
+-define(SHA_UPDATE(Ctx, Data), crypto:sha_update(Ctx, Data)).
+-define(SHA_FINAL(Ctx), crypto:sha_final(Ctx)).
+-else.
+-define(SHA(Data), crypto:hash(sha, Data)).
+-define(SHA_INIT(), crypto:hash_init(sha)).
+-define(SHA_UPDATE(Ctx, Data), crypto:hash_update(Ctx, Data)).
+-define(SHA_FINAL(Ctx), crypto:hash_final(Ctx)).
+-endif.
+
 %% @doc Register the local process under a local name
 %% @end
 -spec register(tuple()) -> true.
@@ -70,7 +82,7 @@ await(Name, Timeout) ->
     Pid.
 
 content_hash(Data) ->
-    <<Mac:160/integer>> = crypto:sha(Data),
+    <<Mac:160/integer>> = ?SHA(Data),
     list_to_binary(lists:flatten(io_lib:format("~40.16.0b", [Mac]))).
 
 %% @spec gettempdir() -> string()
@@ -117,13 +129,13 @@ normalize_dir(L) ->
 %   fun(State) -> {Data, NewState}
 %              -> {Data, eof}      when it's over
 content_hash_on_stream(Func, InitState) ->
-    Context = crypto:sha_init(),
+    Context = ?SHA_INIT(),
     iterate_hash_over_stream(Func, Context, InitState).
 
 iterate_hash_over_stream(_, Context, eof) ->
-    <<Mac:160/integer>> = crypto:sha_final(Context),
+    <<Mac:160/integer>> = ?SHA_FINAL(Context),
     list_to_binary(lists:flatten(io_lib:format("~40.16.0b", [Mac])));
 iterate_hash_over_stream(Func, Context, State) ->
     {Data, NewState} = Func(State),
-    NewContext = crypto:sha_update(Context, Data),
+    NewContext = ?SHA_UPDATE(Context, Data),
     iterate_hash_over_stream(Func, NewContext, NewState).
