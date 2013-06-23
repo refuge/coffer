@@ -16,56 +16,20 @@
 start(_StartType, _StartArgs) ->
     coffer_deps:ensure(),
     ensure_deps_started(),
-    ok =  maybe_start_http(is_embedded()),
+    ok = init_config(),
     coffer_sup:start_link().
 
 stop(_State) ->
     ok.
 
-maybe_start_http(true) ->
-    ok;
-maybe_start_http(false) ->
-    DispatchRules = coffer_http:dispatch_rules(get_app_env(api_prefix)),
-    Dispatch = [{'_', DispatchRules}],
-    Dispatch1 = cowboy_router:compile(Dispatch),
-    Env = [{env, [{dispatch, Dispatch1}]}],
-    DefaultListener = {"http://127.0.0.1:7000", http, 100, []},
-    Listeners = get_app_env(listeners, [DefaultListener]),
-
-
-    lists:foreach(fun({UrlStr, Ref, NbAcceptors, Opts}) ->
-                %% parse URL
-                #hackney_url{host=Ip,
-                             port=Port,
-                             scheme=Scheme} = hackney_url:parse_url(UrlStr),
-
-                {ok, ParsedIp} = inet_parse:address(Ip),
-                Opts1 = [{port, Port},
-                         {ip, ParsedIp}] ++ Opts,
-
-                %% start HTTP
-                case Scheme of
-                    http ->
-                        {ok, _} = cowboy:start_http(Ref, NbAcceptors,
-                                                    Opts1, Env);
-                    https ->
-                        {ok, _} = cowboy:start_https(Ref, NbAcceptors,
-                                                     Opts, Env)
-                end
-        end, Listeners),
-    ok.
-
-is_embedded() ->
-    get_app_env(listeners, []) =:= [].
+init_config() ->
+    DefaultConfDir =  filename:join([code:root_dir(), "./etc"]),
+    ConfFile = get_app_env(config_file, filename:join(DefaultConfDir,
+                                                      "coffer.ini")),
+    econfig:open_config(coffer_config, ConfFile, [autoreload]).
 
 ensure_deps_started() ->
-    {ok, Deps0} = application:get_key(coffer, applications),
-    Deps = case is_embedded() of
-        false ->
-            Deps0 ++ [crypto, public_key, ssl, ranch, cowboy];
-        true ->
-            Deps0
-    end,
+    {ok, Deps} = application:get_key(coffer, applications),
     true = lists:all(fun ensure_started/1, Deps).
 
 ensure_started(App) ->

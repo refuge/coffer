@@ -18,6 +18,7 @@
          await/2]).
 
 -export([gettempdir/0]).
+-export([require/1]).
 
 -ifdef(sha_workaround).
 -define(SHA(Data), crypto:sha(Data)).
@@ -139,3 +140,14 @@ iterate_hash_over_stream(Func, Context, State) ->
     {Data, NewState} = Func(State),
     NewContext = ?SHA_UPDATE(Context, Data),
     iterate_hash_over_stream(Func, NewContext, NewState).
+
+%% @doc Start the given applications if they were not already started.
+-spec require(list(module())) -> ok.
+require([]) ->
+	ok;
+require([App|Rest]) ->
+	case application:start(App) of
+		ok -> ok;
+		{error, {already_started, App}} -> ok
+	end,
+	require(Rest).

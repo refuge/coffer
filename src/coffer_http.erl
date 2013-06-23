@@ -5,7 +5,10 @@
 
 -module(coffer_http).
 
--export([dispatch_rules/1]).
+-export([dispatch_rules/0, dispatch_rules/1]).
+
+dispatch_rules() ->
+    dispatch_rules("").
 
 dispatch_rules(Prefix0) ->
     Rules = [{"/", coffer_http_root, []},

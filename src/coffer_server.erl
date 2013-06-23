@@ -24,6 +24,8 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+-define(DEFAULT_PORT, 7000).
+
 %% ------------------------------------------------------------------
 %% API Function Definitions
 %% ------------------------------------------------------------------
@@ -50,7 +52,8 @@ get(StorageName) ->
 % gen_server state records
 -record(state, {
     storages = [],
-    options = []
+    options = [],
+    http_config
 }).
 -record(storage, {
     name,
@@ -75,7 +78,9 @@ init([]) ->
         #state{},
         StoragesConfig
     ),
-    {ok, FinalState}.
+
+    HttpConf = maybe_start_http(),
+    {ok, FinalState#state{http_config=HttpConf}}.
 
 handle_call({list}, _From, #state{storages=Storages}=State) ->
     Reply = lists:foldl(
@@ -156,7 +161,7 @@ do_add_storage(StorageName, Backend, Config,
             {{error, already_exists}, State}
     end.
 
- do_remove_storage(StorageName, #state{storages=Storages}=State) ->
+do_remove_storage(StorageName, #state{storages=Storages}=State) ->
     case proplists:get_value(StorageName, Storages) of
         undefined ->
             {{error, not_found}, State};
@@ -170,5 +175,174 @@ do_add_storage(StorageName, Backend, Config,
                 {error, Reason} ->
                     {{error, Reason}, State}
             end
+    end.
+
+maybe_start_http() ->
+    HttpConf = http_config(),
+    EnableHttp = econfig:get_value(coffer_config, "core", "enable_http",
+                                   "true"),
+    DispatchRules = coffer_http:dispatch_rules(),
+    Dispatch = [{'_', DispatchRules}],
+    Dispatch1 = cowboy_router:compile(Dispatch),
+    Env = [{env, [{dispatch, Dispatch1}]}],
+
+    HttpConf1 = case {HttpConf, EnableHttp} of
+        {[], "true"} ->
+            coffer_util:require([crypto, public_key, ssl, ranch,
+                                 cowboy]),
+            [{default, {100, [{port, 7000}], false}}];
+        {_, "true"} ->
+            coffer_util:require([crypto, public_key, ssl, ranch,
+                                 cowboy]),
+            HttpConf;
+        _ ->
+            []
+    end,
+
+    lists:foreach(fun
+            ({Ref, {NbAcceptors, Opts, false}}) ->
+                {ok, _} = cowboy:start_http(Ref, NbAcceptors, Opts, Env);
+            ({Ref, {NbAcceptors, Opts, true}}) ->
+                {ok, _} = cowboy:start_https(Ref, NbAcceptors, Opts, Env)
+        end, HttpConf1),
+    HttpConf1.
+
+http_config() ->
+    case econfig:prefix(coffer_config, "http") of
+        [] -> [];
+        Sections ->
+            lists:foldl(fun(Section, Acc) ->
+                        ["", RefStr] = re:split(Section, "http ",
+                                                [{return, list}]),
+                        Ref = list_to_atom(RefStr),
+                        Conf = econfig:get_value(coffer_config,
+                                                 Section),
+
+                        case proplists:get_value("listen", Conf) of
+                            undefined ->
+                                Acc;
+                            Addr ->
+                                {Ip, Port} = parse_address(Addr),
+                                NbAcceptors = list_to_integer(
+                                        proplists:get_value("nb_acceptors",
+                                                            Conf, "100")
+                                        ),
+                                {ok, ParsedIp} = inet_parse:address(Ip),
+                                Opts = [{port, Port}, {ip, ParsedIp}],
+                                case is_ssl(Conf) of
+                                    false ->
+                                        [{Ref, {NbAcceptors, Opts,
+                                                false}} | Acc];
+                                    true ->
+                                        Opts1 = Opts ++ ssl_options(Section),
+                                        [{Ref, {NbAcceptors, Opts1,
+                                                true}} | Acc]
+                                end
+                        end
+                end, [], Sections)
+    end.
+
+ssl_options(Section) ->
+    CertFile = econfig:get_value(coffer_config, Section, "cert_file", nil),
+    KeyFile = econfig:get_value(coffer_config, Section, "key_file", nil),
+    case CertFile /= nil of
+        true ->
+            SslOpts0 = [{certfile, CertFile}],
+
+            %% open certfile to get entries.
+            {ok, PemBin} = file:read_file(CertFile),
+            CertEntries = public_key:pem_decode(PemBin),
+
+            SslOpts = case econfig:get_value(coffer_config, Section,
+                                             "key_file", nil) of
+                nil ->
+                    if length(CertEntries) >= 2 ->
+                            SslOpts0;
+                        true ->
+                            lager:error("SSL Private Key is missing", []),
+                            throw({error, missing_keyfile})
+                    end;
+                KeyFile ->
+                    SslOpts0 ++ [{keyfile, KeyFile}]
+            end,
+
+            %% set password if one is needed for the cert
+            SslOpts1 = case econfig:get_value(coffer_config, Section,
+                                              "password", nil) of
+                nil -> SslOpts;
+                Password ->
+                    SslOpts ++ [{password, Password}]
+            end,
+
+            %% check if cacerts are already set in the pem file
+            SslOpts2 = case econfig:get_value(coffer_config, Section,
+                                              "cacert_file", nil) of
+                nil ->
+                    case CertEntries of
+                        [_P, _Cert| CaCerts] when CaCerts /= [] ->
+                            SslOpts1 ++ [{cacerts, CaCerts}];
+                        _ ->
+                            SslOpts1
+                    end;
+                CaCertFile ->
+                    SslOpts1 ++ [{cacertfile, CaCertFile}]
+            end,
+
+            % do we verify certificates ?
+            FinalSslOpts = case econfig:get_value(coffer_config, Section,
+                                                  "verify_ssl_certificates",
+                                                  "false") of
+                "false" ->
+                    SslOpts2 ++ [{verify, verify_none}];
+                "true" ->
+                    %% get depth
+                    Depth = list_to_integer(
+                            econfig:get_value(coffer_config, Section,
+                                              "ssl_certificate_max_depth",
+                                              "1")
+                    ),
+                    %% check if we need a CA.
+                    WithCA = SslOpts1 /= SslOpts1,
+                    case WithCA of
+                        false when Depth >= 1 ->
+                           lager:error("Verify SSL certificate "
+                                    ++"enabled but file containing "
+                                    ++"PEM encoded CA certificates is "
+                                    ++"missing", []),
+                            throw({error, missing_cacerts});
+                        _ ->
+                            ok
+                    end,
+                    [{depth, Depth},{verify, verify_peer}]
+            end,
+            FinalSslOpts;
+        false ->
+            lager:error("SSL enabled but PEM certificates are missing.", []),
+            throw({error, missing_certs})
+    end.
+
+
+is_ssl(Conf) ->
+    proplists:get_value("ssl", Conf, "false") =:= "true".
+
+parse_address(Addr) when is_list(Addr) ->
+    parse_address(list_to_binary(Addr));
+parse_address(<<"[", Rest/binary>>) ->
+    case binary:split(Rest, <<"]">>) of
+        [Host, <<>>] ->
+            {binary_to_list(Host), ?DEFAULT_PORT};
+        [Host, <<":", Port/binary>>] ->
+            {binary_to_list(Host),
+             list_to_integer(binary_to_list(Port))};
+        _ ->
+            parse_address(Rest)
+    end;
+parse_address(Addr) ->
+    case binary:split(Addr, <<":">>) of
+        [Port] ->
+            {"0.0.0.0", list_to_integer(binary_to_list(Port))};
+        [Host, Port] ->
+            {binary_to_list(Host),
+             list_to_integer(binary_to_list(Port))}
     end.
 
