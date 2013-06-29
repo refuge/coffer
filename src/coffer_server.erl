@@ -28,6 +28,7 @@
 -define(DEFAULT_NB_ACCEPTORS, 100).
 -define(DEFAULT_TIMEOUT, 30).
 -define(DEFAULT_LISTENER,{default, {100, [{port, 7000}], false}}).
+-define(DEFAULT_LISTENER_CFG, [{"nb_acceptors", "100"}, {"listen", "7000"}]).
 
 
 %% ------------------------------------------------------------------

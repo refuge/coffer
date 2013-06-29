@@ -86,6 +86,26 @@ handle_req(<<"GET">>, [{key, Key}, {section, Section}], Req) ->
                                     <<"application/json">>}], Json,
                              Req1)
     end;
+
+handle_req(<<"PUT">>, [{section, Section}], Req) ->
+    case cowboy_req:body(Req) of
+        {ok, Bin, Req1} ->
+            Config = jsx:decode(Bin),
+            case Section of
+                <<"http">> ->
+                    lists:foreach(fun({Name, Conf}) ->
+                                Section1 = << "http \"", Name/binary, "\"">>,
+                                ok = econfig:set_value(coffer_config,
+                                                       Section1, Conf)
+                        end, Config);
+                _ ->
+                    ok = econfig:set_value(coffer_config, Section,
+                                           Config)
+            end,
+            coffer_http_util:ok(202, Req1);
+        Error ->
+            Error
+    end;
 handle_req(<<"PUT">>, [{key, Key}, {section, <<"http">>}], Req) ->
     case cowboy_req:body(Req) of
         {ok, Bin, Req1} ->
@@ -118,6 +138,20 @@ handle_req(<<"PUT">>, [{key, Key}, {section, Section}], Req) ->
         Error ->
             Error
     end;
+
+handle_req(<<"DELETE">>, [{section, Section}], Req) ->
+    case Section of
+        <<"http">> ->
+            HttpSections = econfig:prefix(coffer_config, "http"),
+
+            lists:foreach(fun(Section1) ->
+                        ok = econfig:delete_value(coffer_config, Section1)
+                end, HttpSections);
+        _ ->
+            ok = econfig:delete_value(coffer_config, Section)
+    end,
+    coffer_http_util:ok(202, Req);
+
 handle_req(<<"DELETE">>, [{key, Key}, {section, <<"http">>}], Req) ->
     Section = << "http \"", Key/binary, "\"" >>,
 
