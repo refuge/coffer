@@ -144,6 +144,8 @@ handle_info({config_updated, coffer_config, {delete, {Section, Key}}},
             %% make sure we start a default config if needed.
             case {HttpEnabled, NewState0} of
                 {true, #state{http_config=[]}} ->
+                    lager:info("HTTP API is enabled but no config is set",
+                               []),
                     NewState0#state{http_config=init_http()};
                 _ ->
                     NewState0
