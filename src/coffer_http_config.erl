@@ -12,7 +12,6 @@ init(_Transport, Req, []) ->
 handle(Req, State) ->
     {Method, Req2} = cowboy_req:method(Req),
     {Bindings, Req3} = cowboy_req:bindings(Req2),
-    lager:info("got bindings ~p~n", [Bindings]),
     {ok, handle_req(Method, Bindings, Req3), State}.
 
 handle_req(<<"GET">>, [], Req) ->
@@ -87,7 +86,57 @@ handle_req(<<"GET">>, [{key, Key}, {section, Section}], Req) ->
                                     <<"application/json">>}], Json,
                              Req1)
     end;
+handle_req(<<"PUT">>, [{key, Key}, {section, <<"http">>}], Req) ->
+    case cowboy_req:body(Req) of
+        {ok, Bin, Req1} ->
+            Value = jsx:decode(Bin),
+            Section = << "http \"", Key/binary, "\"" >>,
+            case econfig:set_value(coffer_config, Section, Value) of
+                ok ->
+                    coffer_http_util:ok(202, Req1);
+                Error ->
+                    lager:error("config update: ~p~n", [Error]),
+                    coffer_http_util:error(500, Req1)
+            end;
+        Error ->
+            Error
+    end;
 
+
+handle_req(<<"PUT">>, [{key, Key}, {section, Section}], Req) ->
+    case cowboy_req:body(Req) of
+        {ok, Bin, Req1} ->
+            Value = jsx:decode(Bin),
+            case econfig:set_value(coffer_config, Section, Key,
+                                   Value) of
+                ok ->
+                    coffer_http_util:ok(202, Req1);
+                Error ->
+                    lager:error("config update: ~p~n", [Error]),
+                    coffer_http_util:error(500, Req1)
+            end;
+        Error ->
+            Error
+    end;
+handle_req(<<"DELETE">>, [{key, Key}, {section, <<"http">>}], Req) ->
+    Section = << "http \"", Key/binary, "\"" >>,
+
+    case econfig:delete_value(coffer_config, Section) of
+        ok ->
+            coffer_http_util:ok(202, Req);
+        Error ->
+            lager:error("config update: ~p~n", [Error]),
+            coffer_http_util:error(500, Req)
+    end;
+
+handle_req(<<"DELETE">>, [{key, Key}, {section, Section}], Req) ->
+    case econfig:delete_value(coffer_config, Section, Key) of
+        ok ->
+            coffer_http_util:ok(202, Req);
+        Error ->
+            lager:error("config update: ~p~n", [Error]),
+            coffer_http_util:error(500, Req)
+    end;
 
 handle_req(_, _, Req) ->
     coffer_http_util:not_allowed([<<"GET">>, <<"DELETE">>, <<"PUT">>], Req).

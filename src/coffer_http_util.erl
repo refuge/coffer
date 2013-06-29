@@ -7,7 +7,8 @@
 
 -export([not_allowed/2,
          not_found/1,
-         error/2, error/3, error/4]).
+         error/2, error/3, error/4,
+         ok/1, ok/2]).
 -export([to_json/2]).
 -export([maybe_prettify_json/2]).
 
@@ -48,6 +49,14 @@ error(Status, Reason, Extra, Req) ->
     {Json, Req1} = to_json(ReturnedData, Req),
     cowboy_req:reply(Status, [{<<"Content-Type">>, <<"application/json">>}],
                      Json, Req1).
+
+ok(Req) ->
+    ok(200, Req).
+
+ok(Status, Req) ->
+    Json = jsx:encode([{<<"ok">>, true}]),
+    cowboy_req:reply(Status, [{<<"Content-Type">>, <<"application/json">>}],
+                     Json, Req).
 
 to_json(Json, Req) ->
     maybe_prettify_json(jsx:encode(Json), Req).
