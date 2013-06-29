@@ -12,6 +12,7 @@ init(_Transport, Req, []) ->
 handle(Req, State) ->
     {Method, Req2} = cowboy_req:method(Req),
     {Bindings, Req3} = cowboy_req:bindings(Req2),
+    lager:info("got bindings ~p~n", [Bindings]),
     {ok, handle_req(Method, Bindings, Req3), State}.
 
 handle_req(<<"GET">>, [], Req) ->
@@ -28,14 +29,64 @@ handle_req(<<"GET">>, [], Req) ->
                     [{<<"http">>, HttpConfig1} | Acc];
 
                 ({Key, Val}, Acc) ->
-                    [{list_to_binary(Key), list_to_binary(Val)} | Acc]
+                    KVs = [{list_to_binary(K),list_to_binary(V)}
+                           || {K, V} <- Val],
+                    [{list_to_binary(Key), KVs} | Acc]
             end, [], econfig:cfg2list(coffer_config, " ")),
 
-    lager:info("got ~p~n", [Config]),
     {JsonConfig, Req1} = coffer_http_util:to_json(Config, Req),
     cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>}],
                  JsonConfig, Req1);
 
+handle_req(<<"GET">>, [{section, <<"http">>}], Req) ->
+    %% clean config, convert to binay value
+    %%
+    Config = lists:map(fun(Name0) ->
+                    Settings = econfig:get_value(coffer_config, Name0),
+                    KVs = [{list_to_binary(K),
+                            list_to_binary(V)} || {K, V}
+                                                  <- Settings],
+                    "http" ++ Name = Name0,
+                    {clean_name(Name), KVs}
+            end, econfig:prefix(coffer_config, "http")),
+    {JsonConfig, Req1} = coffer_http_util:to_json([{<<"htttp">>, Config}], Req),
+    cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>}],
+                 JsonConfig, Req1);
+handle_req(<<"GET">>, [{section, Section}], Req) ->
+    KVs = [{list_to_binary(K), list_to_binary(V)}
+           || {K, V} <- econfig:get_value(coffer_config,
+                                          binary_to_list(Section))],
+    {Json, Req1} = coffer_http_util:to_json([{Section, KVs}], Req),
+    cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>}],
+                 Json, Req1);
+handle_req(<<"GET">>, [{key, Key}, {section, <<"http">>}], Req) ->
+
+    HttpSections = lists:map(fun(Section) ->
+                    "http" ++ Name = Section,
+                    {clean_name(Name), Section}
+            end, econfig:prefix(coffer_config, "http")),
+
+    Config = case lists:keyfind(Key, 1, HttpSections) of
+        false ->
+            [{}];
+        {_, Section} ->
+            Settings = econfig:get_value(coffer_config, Section),
+            [{list_to_binary(K), list_to_binary(V)} || {K, V} <- Settings]
+    end,
+    {JsonConfig, Req1} = coffer_http_util:to_json(Config, Req),
+    cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>}],
+                 JsonConfig, Req1);
+handle_req(<<"GET">>, [{key, Key}, {section, Section}], Req) ->
+    case econfig:get_value(coffer_config,  binary_to_list(Section),
+                           binary_to_list(Key)) of
+        undefined ->
+            coffer_http_util:not_found(Req);
+        Val ->
+            {Json, Req1} = coffer_http_util:to_json(list_to_binary(Val), Req),
+            cowboy_req:reply(200, [{<<"Content-Type">>,
+                                    <<"application/json">>}], Json,
+                             Req1)
+    end;
 handle_req(_, _, Req) ->
     coffer_http_util:not_allowed([<<"GET">>, <<"PUT">>], Req).
 
