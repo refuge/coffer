@@ -122,31 +122,36 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({config_updated, coffer_config, {set, {Section, Key}}}=Info,
-            State) ->
-    lager:info("got ~p~n", [Info]),
+handle_info({config_updated, coffer_config, {set, {Section, Key}}}, State) ->
+    HttpEnabled = http_enabled(),
     NewState = case re:split(Section, "http", [{return, list}]) of
         [Section] ->
             update_config(Section, Key, State);
-        _ ->
+        _ when HttpEnabled =:= true ->
             NewConf = coffer_config_util:parse_http_config(Section),
             update_http_config(Section, Key, NewConf, State)
     end,
     {noreply, NewState};
 
-handle_info({config_updated, coffer_config, {delete, {Section, Key}}}=Info,
+handle_info({config_updated, coffer_config, {delete, {Section, Key}}},
             State) ->
-    lager:info("got ~p~n", [Info]),
+    HttpEnabled = http_enabled(),
     NewState = case re:split(Section, "http", [{return, list}]) of
         [Section] ->
             update_config(Section, Key, State);
-        _ ->
-            delete_http_config(Section, Key, State)
+        _ when HttpEnabled =:= true ->
+            NewState0 = delete_http_config(Section, Key, State),
+            %% make sure we start a default config if needed.
+            case {HttpEnabled, NewState0} of
+                {true, #state{http_config=[]}} ->
+                    NewState0#state{http_config=init_http()};
+                _ ->
+                    NewState0
+            end
     end,
     {noreply, NewState};
 
 handle_info(_Info, State) ->
-    lager:error("unknown coffer_server message ~p~n", [_Info]),
     {noreply, State}.
 
 terminate(_Reason, #state{storages=Storages,
