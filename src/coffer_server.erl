@@ -24,7 +24,11 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--define(DEFAULT_PORT, 7000).
+
+-define(DEFAULT_NB_ACCEPTORS, 100).
+-define(DEFAULT_TIMEOUT, 30).
+-define(DEFAULT_LISTENER,{default, {100, [{port, 7000}], false}}).
+
 
 %% ------------------------------------------------------------------
 %% API Function Definitions
@@ -53,7 +57,8 @@ get(StorageName) ->
 -record(state, {
     storages = [],
     options = [],
-    http_configs
+    http_config = [],
+    graceful_timeout
 }).
 -record(storage, {
     name,
@@ -79,10 +84,14 @@ init([]) ->
         StoragesConfig
     ),
 
-    HttpConfs = maybe_start_http(),
+    %% start HTTP
+    HttpConfig = init_http(),
+
+    %% subscribe to config changes
     econfig:subscribe(coffer_config),
 
-    {ok, FinalState#state{http_configs=HttpConfs}}.
+    %% return initial stat
+    {ok, FinalState#state{http_config=HttpConfig}}.
 
 handle_call({list}, _From, #state{storages=Storages}=State) ->
     Reply = lists:foldl(
@@ -113,37 +122,38 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({config_updated, coffer_config, {set, Section, Key}}=Info,
-            #state{http_configs=HttpConfs}=State) ->
+handle_info({config_updated, coffer_config, {set, {Section, Key}}}=Info,
+            State) ->
     lager:info("got ~p~n", [Info]),
-    NewState = case lists:member(Section, HttpConfs)  of
-        true ->
-            NewConf = parse_http_config(Section),
-            update_http_config(Section, Key, NewConf, State);
-        false ->
-            case re:split(Section, "http", [{return, list}]) of
-                [Section] ->
-                    update_config(Section, Key, State);
-                _ ->
-                    NewConf = parse_http_config(Section),
-                    Env = get_http_env(),
-                    start_http(NewConf, Env, State)
-            end
+    NewState = case re:split(Section, "http", [{return, list}]) of
+        [Section] ->
+            update_config(Section, Key, State);
+        _ ->
+            NewConf = coffer_config_util:parse_http_config(Section),
+            update_http_config(Section, Key, NewConf, State)
     end,
     {noreply, NewState};
 
-handle_info({config_updated, coffer_config, reload}, State) ->
-    {noreply, reload_config(State)};
+handle_info({config_updated, coffer_config, {delete, {Section, Key}}}=Info,
+            State) ->
+    lager:info("got ~p~n", [Info]),
+    NewState = case re:split(Section, "http", [{return, list}]) of
+        [Section] ->
+            update_config(Section, Key, State);
+        _ ->
+            delete_http_config(Section, Key, State)
+    end,
+    {noreply, NewState};
 
 handle_info(_Info, State) ->
-    lager:info("got ~p~n", [_Info]),
+    lager:error("unknown coffer_server message ~p~n", [_Info]),
     {noreply, State}.
 
 terminate(_Reason, #state{storages=Storages,
-                          http_configs=HttpConfs}=_State) ->
+                          http_config=HttpConfs}=_State) ->
 
     %% stop the HTTP API
-    lists:foreach(fun({_, {Ref, _}}) ->
+    lists:foreach(fun({Ref, {_, _, _}}) ->
                 ranch:stop_listener(Ref)
         end, HttpConfs),
 
@@ -214,75 +224,87 @@ do_remove_storage(StorageName, #state{storages=Storages}=State) ->
 %% manage config
 %%
 
-reload_config(#state{http_configs=HttpConfs}=State) ->
-    EnableHttp = econfig:get_value(coffer_config, "coffer", "enable_http",
-                                   "true"),
-    case {EnableHttp, HttpConfs} of
-        {false, []} ->
-            State;
-        {false, _} ->
-            lager:info("stop the HTTP API.~n", []),
-            stop_http(State);
-        {true, _} ->
-            reload_http_config(State)
+http_enabled() ->
+    case econfig:get_value(coffer_config, "coffer", "enable_http",
+                           "true") of
+        "true" -> true;
+        _ -> false
     end.
 
-reload_http_config(#state{http_configs=HttpConfs}=State) ->
-    coffer_util:require([crypto, public_key, ssl, ranch,
-                                 cowboy]),
+init_http() ->
+    %% get all settings
+    Settings0 = coffer_config_util:http_settings(),
 
-    Confs = http_config(),
+    %a if no http settings and HTTP is enabled set the default.
+    Settings = case {http_enabled(), Settings0} of
+        {true, []} ->
+            coffer_util:require([crypto, public_key, ssl, ranch,
+                                 cowboy]),
+            [?DEFAULT_LISTENER];
+        {true, _} ->
+            coffer_util:require([crypto, public_key, ssl, ranch,
+                                 cowboy]),
+            Settings0;
+        _ -> []
+    end,
+
+    %% get default env
     Env = get_http_env(),
 
-    case {Confs, HttpConfs} of
-        {[], []} ->
-            %% setup a default configuration
-            {ok, _} = cowboy:start_http(default, 100, [{port, 7000}],
-                                        Env),
-            State#state{http_configs=[{"http_default", {default, false}}]};
-        {[], _} ->
-            case lists:keyfind("http_default", 1, HttpConfs) of
-                false ->
-                    State1 = stop_http(State),
-                    %% setup a default configuration
-                    {ok, _} = cowboy:start_http(default, 100, [{port, 7000}],
-                                        Env),
-                    State1#state{http_configs=[{"http_default",
-                                               {default, false}}]};
-                _ ->
-                    %% stop non default connections
-                    NewConfs = lists:foldl(fun
-                                ({"http_default", _}=Default, _Acc) ->
-                                    [Default];
-                                ({_, {Ref, _}}, Acc) ->
-                                    ranch:stop_listener(Ref),
-                                    Acc
-                            end, [], HttpConfs),
-                    State#state{http_configs=NewConfs}
-            end;
-        _ ->
-            NewConfs = lists:foldl(fun
-                        ({Section, {Ref, N, Opts, Ssl}}=Conf, Acc) ->
-                            case lists:keyfind(Section, 1, HttpConfs) of
-                                false  ->
-                                    {ok, _} = do_start_http(Conf, Env);
-                                {_, {_, OldSsl}} when OldSsl =:= Ssl ->
-                                    ranch:set_max_connections(Ref, N),
-                                    ranch:set_protocol_options(Ref,
-                                                               Opts);
-                                _ ->
-                                    ranch:stop_listener(Ref),
-                                    {ok, _} = do_start_http(Conf, Env)
-                            end,
-                            [{Section, {Ref, Ssl}} | Acc]
-                    end, [], Confs),
+    %% start all HTTP interfaces
+    lists:foldl(fun(Conf, Acc) ->
+                case start_listener(Conf, Env, 5) of
+                    {ok, Listener} -> [Listener | Acc];
+                    error -> Acc
+                end
+        end, [], Settings).
 
-            State#state{http_configs=NewConfs}
+
+%% start a listener
+start_listener({Ref, _}, _, 0) ->
+    lager:info("Listener ~p not started~n", [Ref]),
+    error;
+start_listener({Ref, {NbAcceptors, TransOpts, Ssl}}=Conf, ProtoOpts,
+                Tries) ->
+    Transport = case Ssl of
+        true -> ranch_ssl;
+        _ -> ranch_tcp
+    end,
+
+    case ranch:start_listener(Ref, NbAcceptors, Transport, TransOpts,
+                              cowboy_protocol, ProtoOpts) of
+        {ok, _} ->
+            lager:info("start to listen: ~p~n", [Ref]),
+            {ok, Conf};
+        Error ->
+            lager:error("error starting ~p: ~p~n", [Ref, Error]),
+            start_listener(Conf, ProtoOpts, Tries-1)
     end.
 
-%%
-%% manage HTTP config
-%%
+
+restart_listener({Ref, _}=Conf, #state{http_config=HttpConfs}=State) ->
+    %% stop the listerener first if it already exist.
+    case lists:keyfind(Ref, 1, HttpConfs) of
+        false ->
+            ok;
+        _ ->
+            lager:info("HTTP: stop ~p~n", [Ref]),
+            ranch:stop_listener(Ref)
+    end,
+
+    lager:info("restart listener ~p with ~p~n", [Ref, Conf]),
+    %% start the listener with new options
+    Env = get_http_env(),
+
+    NewConfs = case start_listener(Conf, Env, 5) of
+        {ok, Conf} ->
+            lager:info("ici", []),
+            lists:keyreplace(Ref, 1, HttpConfs, Conf);
+        error ->
+            lists:keydelete(Ref, 1, HttpConfs)
+    end,
+    lager:info("la", []),
+    State#state{http_config=NewConfs}.
 
 
 get_http_env() ->
@@ -291,234 +313,61 @@ get_http_env() ->
     Dispatch1 = cowboy_router:compile(Dispatch),
     [{env, [{dispatch, Dispatch1}]}].
 
+update_http_config(Section, _Key, unbound,
+                   #state{http_config=HttpConfs}=State) ->
+    Ref = coffer_config_util:http_ref(Section),
 
-maybe_start_http() ->
-    HttpConf = http_config(),
-    EnableHttp = econfig:get_value(coffer_config, "coffer", "enable_http",
-                                   "true"),
-    Env = get_http_env(),
-
-    case {HttpConf, EnableHttp} of
-        {[], "true"} ->
-            coffer_util:require([crypto, public_key, ssl, ranch,
-                                 cowboy]),
-
-            %% setup a default configuration
-            {ok, _} = cowboy:start_http(default, 100, [{port, 7000}],
-                                        Env),
-            [{"http_default", {default, false}}];
-        {Confs, "true"} ->
-            coffer_util:require([crypto, public_key, ssl, ranch,
-                                 cowboy]),
-
-            %% start configurations
-            lists:foldl(fun
-                    ({Section, {Ref, NbAcceptors, Opts, false}}, Acc) ->
-                        {ok, _} = cowboy:start_http(Ref, NbAcceptors,
-                                                    Opts, Env),
-                        [{Section, {Ref, false}} | Acc];
-                    ({Section, {Ref, NbAcceptors, Opts, true}}, Acc) ->
-                        {ok, _} = cowboy:start_https(Ref, NbAcceptors,
-                                                     Opts, Env),
-                        [{Section, {Ref, true}} | Acc]
-                end, [], Confs);
-        _ ->
-            []
-    end.
-
-http_config() ->
-    case econfig:prefix(coffer_config, "http") of
-        [] -> [];
-        Sections ->
-            lists:foldl(fun(Section, Acc) ->
-                        case parse_http_config(Section) of
-                            invalid -> Acc;
-                            Conf -> [Conf | Acc]
-                        end
-                end, [], Sections)
-    end.
-
-ref_from_config(Section) ->
-    ["", RefStr] = re:split(Section, "http ", [{return, list}]),
-    list_to_atom(RefStr).
-
-parse_http_config(Section) ->
-    Ref = ref_from_config(Section),
-    Conf = econfig:get_value(coffer_config, Section),
-
-    case proplists:get_value("listen", Conf) of
-        undefined ->
-            invalid;
-        Addr ->
-            {Ip, Port} = parse_address(Addr),
-            NbAcceptors = list_to_integer(
-                    proplists:get_value("nb_acceptors", Conf, "100")
-            ),
-            {ok, ParsedIp} = inet_parse:address(Ip),
-            Opts = [{port, Port}, {ip, ParsedIp}],
-            case is_ssl(Conf) of
-                false ->
-                    {Section, {Ref, NbAcceptors, Opts, false}};
-                true ->
-                    Opts1 = Opts ++ ssl_options(Section),
-                    {Section, {Ref, NbAcceptors, Opts1, true}}
-            end
-        end.
-
-ssl_options(Section) ->
-    CertFile = econfig:get_value(coffer_config, Section, "cert_file", nil),
-    KeyFile = econfig:get_value(coffer_config, Section, "key_file", nil),
-    case CertFile /= nil of
-        true ->
-            SslOpts0 = [{certfile, CertFile}],
-
-            %% open certfile to get entries.
-            {ok, PemBin} = file:read_file(CertFile),
-            CertEntries = public_key:pem_decode(PemBin),
-
-            SslOpts = case econfig:get_value(coffer_config, Section,
-                                             "key_file", nil) of
-                nil ->
-                    if length(CertEntries) >= 2 ->
-                            SslOpts0;
-                        true ->
-                            lager:error("SSL Private Key is missing", []),
-                            throw({error, missing_keyfile})
-                    end;
-                KeyFile ->
-                    SslOpts0 ++ [{keyfile, KeyFile}]
-            end,
-
-            %% set password if one is needed for the cert
-            SslOpts1 = case econfig:get_value(coffer_config, Section,
-                                              "password", nil) of
-                nil -> SslOpts;
-                Password ->
-                    SslOpts ++ [{password, Password}]
-            end,
-
-            %% check if cacerts are already set in the pem file
-            SslOpts2 = case econfig:get_value(coffer_config, Section,
-                                              "cacert_file", nil) of
-                nil ->
-                    case CertEntries of
-                        [_P, _Cert| CaCerts] when CaCerts /= [] ->
-                            SslOpts1 ++ [{cacerts, CaCerts}];
-                        _ ->
-                            SslOpts1
-                    end;
-                CaCertFile ->
-                    SslOpts1 ++ [{cacertfile, CaCertFile}]
-            end,
-
-            % do we verify certificates ?
-            FinalSslOpts = case econfig:get_value(coffer_config, Section,
-                                                  "verify_ssl_certificates",
-                                                  "false") of
-                "false" ->
-                    SslOpts2 ++ [{verify, verify_none}];
-                "true" ->
-                    %% get depth
-                    Depth = list_to_integer(
-                            econfig:get_value(coffer_config, Section,
-                                              "ssl_certificate_max_depth",
-                                              "1")
-                    ),
-                    %% check if we need a CA.
-                    WithCA = SslOpts1 /= SslOpts1,
-                    case WithCA of
-                        false when Depth >= 1 ->
-                           lager:error("Verify SSL certificate "
-                                    ++"enabled but file containing "
-                                    ++"PEM encoded CA certificates is "
-                                    ++"missing", []),
-                            throw({error, missing_cacerts});
-                        _ ->
-                            ok
-                    end,
-                    [{depth, Depth},{verify, verify_peer}]
-            end,
-            FinalSslOpts;
+    case lists:keyfind(Ref, 1, HttpConfs) of
         false ->
-            lager:error("SSL enabled but PEM certificates are missing.", []),
-            throw({error, missing_certs})
-    end.
-
-
-is_ssl(Conf) ->
-    proplists:get_value("ssl", Conf, "false") =:= "true".
-
-parse_address(Addr) when is_list(Addr) ->
-    parse_address(list_to_binary(Addr));
-parse_address(<<"[", Rest/binary>>) ->
-    case binary:split(Rest, <<"]">>) of
-        [Host, <<>>] ->
-            {binary_to_list(Host), ?DEFAULT_PORT};
-        [Host, <<":", Port/binary>>] ->
-            {binary_to_list(Host),
-             list_to_integer(binary_to_list(Port))};
+            State;
         _ ->
-            parse_address(Rest)
+            lager:info("http config: stop ~p~n", [Ref]),
+            ranch:stop_listener(Ref),
+            NewConfs = lists:keydelete(Ref, 1, HttpConfs),
+            State#state{http_config=NewConfs}
     end;
-parse_address(Addr) ->
-    case binary:split(Addr, <<":">>) of
-        [Port] ->
-            {"0.0.0.0", list_to_integer(binary_to_list(Port))};
-        [Host, Port] ->
-            {binary_to_list(Host),
-             list_to_integer(binary_to_list(Port))}
-    end.
-
-
-update_http_config(Section, "listen", invalid,
-                   #state{http_configs=HttpConfs}=State) ->
-    Ref = ref_from_config(Section),
-    lager:info("http config: stop ~p~n", [Ref]),
-    ranch:stop_listener(Ref),
-    NewConfs = lists:keydelete(Section, 1, HttpConfs),
-    State#state{http_configs=NewConfs};
-update_http_config(_Section, _Key, invalid, State) ->
-    State;
-update_http_config(_, "nb_acceptors", {_, {Ref, N, _, _}}, State) ->
+update_http_config(_, "nb_acceptors", {Ref, {N, _, _}}, State) ->
     lager:info("update HTTP config: ~p~n", [Ref]),
     ranch:set_max_connections(Ref, N),
     State;
-update_http_config(Section, "ssl", {_, {Ref, _, _, Ssl}}=Conf,
-                   #state{http_configs=HttpConfs}=State) ->
+update_http_config(_Section, _Key, Conf, State) ->
+    restart_listener(Conf, State).
 
-    case lists:keyfind(Section, 1, HttpConfs) of
-        {_, {_, OldSsl}} when Ssl =:= OldSsl ->
-            State;
-        _  ->
+delete_http_config(Section, "listen",
+                   #state{http_config=HttpConfs}=State) ->
+    Ref = coffer_config_util:http_ref(Section),
+
+    %% stop the listener
+    lager:info("HTTP: stop ~p~n", [Ref]),
+    ranch:stop_listener(Ref),
+
+    %% reset the confs
+    NewConfs = lists:keydelete(Ref, 1, HttpConfs),
+    State#state{http_config=NewConfs};
+delete_http_config(Section, "nb_acceptors", State) ->
+    case coffer_config_util:parse_http_config(Section) of
+        unbound -> ok;
+        {Ref, {N, _, _}} ->
             lager:info("update HTTP config: ~p~n", [Ref]),
-            ranch:stop_listener(Ref),
-            Env = get_http_env(),
-            {ok, _} = do_start_http(Conf, Env),
-            NewConfs = lists:keyreplace(Section, 1, HttpConfs,
-                                        {Section, {Ref, Ssl}}),
-            State#state{http_configs=NewConfs}
-    end;
-update_http_config(_Section, _Key, {_, {Ref, _, Opts, _}}, State) ->
-    lager:info("update HTTP config: ~p~n", [Ref]),
-    ranch:set_protocol_options(Ref, Opts),
-    State.
-
-start_http(invalid, _, State) ->
+            ranch:set_max_connections(Ref, N)
+    end,
     State;
-start_http({Section, {Ref, _NbAcceptors, _Opts, Ssl}}=Conf, Env,
-           #state{http_configs=HttpConfs}=State) ->
-    {ok, _} = do_start_http(Conf, Env),
-    State#state{http_configs=[{Section, {Ref, Ssl}} | HttpConfs]}.
+delete_http_config(Section, _, State) ->
+
+    case coffer_config_util:parse_http_config(Section) of
+        unbound ->
+            State;
+        Conf ->
+            restart_listener(Conf, State)
+    end.
 
 update_config("coffer", "enable_http",
-              #state{http_configs=HttpConfs}=State) ->
-    Enable = econfig:get_value(coffer_config, "coffer", "enable_http",
-                               "true"),
-    case {Enable, HttpConfs} of
+              #state{http_config=HttpConfs}=State) ->
+    case {http_enabled(), HttpConfs} of
         {true, []} ->
             lager:info("start the HTTP API.~n", []),
-            NewConfs = maybe_start_http(),
-            State#state{http_configs=NewConfs};
+            NewHttpConfs = init_http(),
+            State#state{http_config=NewHttpConfs};
         {true, _} ->
             State;
         {false, []} ->
@@ -530,13 +379,8 @@ update_config("coffer", "enable_http",
 update_config(_, _, State) ->
     State.
 
-stop_http(#state{http_configs=HttpConfs}=State) ->
-    lists:foreach(fun({_, {Ref, _}}) ->
+stop_http(#state{http_config=HttpConfs}=State) ->
+    lists:foreach(fun({Ref, {_, _, _}}) ->
                 ranch:stop_listener(Ref)
         end, HttpConfs),
-    State#state{http_configs=[]}.
-
-do_start_http({_Section, {Ref, NbAcceptors, Opts, false}}, Env) ->
-    cowboy:start_http(Ref, NbAcceptors, Opts, Env);
-do_start_http({_Section, {Ref, NbAcceptors, Opts, true}}, Env) ->
-    cowboy:start_https(Ref, NbAcceptors, Opts, Env).
+    State#state{http_config=[]}.

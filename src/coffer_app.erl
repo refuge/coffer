@@ -26,7 +26,7 @@ init_config() ->
     DefaultConfDir =  filename:join([code:root_dir(), "./etc"]),
     ConfFile = get_app_env(config_file, filename:join(DefaultConfDir,
                                                       "coffer.ini")),
-    econfig:open_config(coffer_config, ConfFile, [autoreload]).
+    econfig:open_config(coffer_config, ConfFile).
 
 ensure_deps_started() ->
     {ok, Deps} = application:get_key(coffer, applications),
