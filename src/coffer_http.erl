@@ -12,6 +12,7 @@ dispatch_rules() ->
 
 dispatch_rules(Prefix0) ->
     Rules = [{"/", coffer_http_root, []},
+             {"/config", coffer_http_config, []},
              {"/storages", coffer_http_storages, []},
              {"/:storage", coffer_http_storage, []},
              {"/:storage/stat", coffer_http_stat, []},
