@@ -288,6 +288,8 @@ start_listener({Ref, {NbAcceptors, TransOpts, Ssl}}=Conf, ProtoOpts,
 
 
 restart_listener({Ref, _}=Conf, #state{http_config=HttpConfs}=State) ->
+    lager:info("restart listener ~p with ~p~n", [Ref, Conf]),
+
     %% stop the listerener first if it already exist.
     case lists:keyfind(Ref, 1, HttpConfs) of
         false ->
@@ -297,18 +299,14 @@ restart_listener({Ref, _}=Conf, #state{http_config=HttpConfs}=State) ->
             ranch:stop_listener(Ref)
     end,
 
-    lager:info("restart listener ~p with ~p~n", [Ref, Conf]),
     %% start the listener with new options
     Env = get_http_env(),
-
     NewConfs = case start_listener(Conf, Env, 5) of
         {ok, Conf} ->
-            lager:info("ici", []),
             lists:keyreplace(Ref, 1, HttpConfs, Conf);
         error ->
             lists:keydelete(Ref, 1, HttpConfs)
     end,
-    lager:info("la", []),
     State#state{http_config=NewConfs}.
 
 
