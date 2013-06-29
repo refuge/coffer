@@ -133,6 +133,20 @@ handle_info({config_updated, coffer_config, {set, {Section, Key}}}, State) ->
     end,
     {noreply, NewState};
 
+handle_info({config_updated, coffer_config, {set, Section}}, State) ->
+    HttpEnabled = http_enabled(),
+    NewState = case re:split(Section, "http", [{return, list}]) of
+        [Section] ->
+            %% update all keyt
+            lists:foldr(fun({Key, _}, StateIn) ->
+                update_config(Section, Key, StateIn)
+                end, State, econfig:get_value(coffer_config, Section));
+        _ when HttpEnabled =:= true ->
+            NewConf = coffer_config_util:parse_http_config(Section),
+            maybe_restart_listener(NewConf, State)
+    end,
+    {noreply, NewState};
+
 handle_info({config_updated, coffer_config, {delete, {Section, Key}}},
             State) ->
     HttpEnabled = http_enabled(),
@@ -152,7 +166,25 @@ handle_info({config_updated, coffer_config, {delete, {Section, Key}}},
             end
     end,
     {noreply, NewState};
-
+handle_info({config_updated, coffer_config, {delete, Section}},
+            State) ->
+    HttpEnabled = http_enabled(),
+    NewState = case re:split(Section, "http", [{return, list}]) of
+        [Section] ->
+            update_config(Section, State);
+        _ when HttpEnabled =:= true ->
+            NewState0 = delete_http_config(Section, nil, State),
+            %% make sure we start a default config if needed.
+            case {HttpEnabled, NewState0} of
+                {true, #state{http_config=[]}} ->
+                    lager:info("HTTP API is enabled but no config is set",
+                               []),
+                    NewState0#state{http_config=init_http()};
+                _ ->
+                    NewState0
+            end
+    end,
+    {noreply, NewState};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -311,6 +343,23 @@ restart_listener({Ref, _}=Conf, #state{http_config=HttpConfs}=State) ->
     end,
     State#state{http_config=NewConfs}.
 
+maybe_restart_listener({Ref, Settings}=Conf,
+                       #state{http_config=HttpConfs}=State) ->
+
+    {N, Props, Ssl} = Settings,
+
+    %% stop the listerener first if it already exist.
+    case lists:keyfind(Ref, 1, HttpConfs) of
+        false ->
+            restart_listener(Conf, State);
+        Conf ->
+            State;
+        {Ref, {N0, Props, Ssl}} when N0 /= N ->
+            ranch:set_max_connections(Ref, N0),
+            State;
+        _ ->
+            restart_listener(Conf, State)
+    end.
 
 get_http_env() ->
     DispatchRules = coffer_http:dispatch_rules(),
@@ -357,14 +406,32 @@ delete_http_config(Section, "nb_acceptors", State) ->
             ranch:set_max_connections(Ref, N)
     end,
     State;
-delete_http_config(Section, _, State) ->
+delete_http_config(Section, _, #state{http_config=HttpConfs}=State) ->
 
     case coffer_config_util:parse_http_config(Section) of
         unbound ->
+           "http" ++ BaseRef = Section,
+            Ref = coffer_config_util:http_ref(BaseRef),
+
+            %% stop the listerener first if it already exist.
+            case lists:keyfind(Ref, 1, HttpConfs) of
+                false ->
+                    ok;
+                _ ->
+                    lager:info("HTTP: stop ~p~n", [Ref]),
+                    ranch:stop_listener(Ref)
+            end,
             State;
         Conf ->
             restart_listener(Conf, State)
     end.
+
+
+update_config("coffer", State) ->
+    lager:info("stop the HTTP API.~n", []),
+    stop_http(State);
+update_config(_, State) ->
+    State.
 
 update_config("coffer", "enable_http",
               #state{http_config=HttpConfs}=State) ->

@@ -87,8 +87,10 @@ handle_req(<<"GET">>, [{key, Key}, {section, Section}], Req) ->
                                     <<"application/json">>}], Json,
                              Req1)
     end;
+
+
 handle_req(_, _, Req) ->
-    coffer_http_util:not_allowed([<<"GET">>, <<"PUT">>], Req).
+    coffer_http_util:not_allowed([<<"GET">>, <<"DELETE">>, <<"PUT">>], Req).
 
 terminate(_Reason, _Req, _State) ->
     ok.
