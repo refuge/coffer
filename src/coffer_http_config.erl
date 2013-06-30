@@ -12,7 +12,8 @@ init(_Transport, Req, []) ->
 handle(Req, State) ->
     {Method, Req2} = cowboy_req:method(Req),
     {Bindings, Req3} = cowboy_req:bindings(Req2),
-    {ok, handle_req(Method, Bindings, Req3), State}.
+    {ok, Req4} = handle_req(Method, Bindings, Req3),
+    {ok, Req4, State}.
 
 handle_req(<<"GET">>, [], Req) ->
     %% clean config, convert to binay value
@@ -155,7 +156,7 @@ handle_req(<<"DELETE">>, [{section, Section}], Req) ->
 handle_req(<<"DELETE">>, [{key, Key}, {section, <<"http">>}], Req) ->
     Section = << "http \"", Key/binary, "\"" >>,
 
-    case econfig:delete_value(coffer_config, Section) of
+    case econfig:delete_value(coffer_config, binary_to_list(Section)) of
         ok ->
             coffer_http_util:ok(202, Req);
         Error ->
@@ -164,7 +165,8 @@ handle_req(<<"DELETE">>, [{key, Key}, {section, <<"http">>}], Req) ->
     end;
 
 handle_req(<<"DELETE">>, [{key, Key}, {section, Section}], Req) ->
-    case econfig:delete_value(coffer_config, Section, Key) of
+    case econfig:delete_value(coffer_config, binary_to_list(Section),
+                              binary_to_list(Key)) of
         ok ->
             coffer_http_util:ok(202, Req);
         Error ->
