@@ -408,25 +408,23 @@ delete_http_config(Section, "nb_acceptors", State) ->
     end,
     State;
 delete_http_config(Section, _, #state{http_config=HttpConfs}=State) ->
-
     case coffer_config_util:parse_http_config(Section) of
         unbound ->
-           "http" ++ BaseRef = Section,
-            Ref = coffer_config_util:http_ref(BaseRef),
+            Ref = coffer_config_util:http_ref(Section),
 
             %% stop the listerener first if it already exist.
             case lists:keyfind(Ref, 1, HttpConfs) of
                 false ->
-                    ok;
+                    State;
                 _ ->
                     lager:info("HTTP: stop ~p~n", [Ref]),
-                    ranch:stop_listener(Ref)
-            end,
-            State;
+                    ranch:stop_listener(Ref),
+                    NewConfs = lists:keydelete(Ref, 1, HttpConfs),
+                    State#state{http_config=NewConfs}
+            end;
         Conf ->
             restart_listener(Conf, State)
     end.
-
 
 update_config("coffer", State) ->
     lager:info("stop the HTTP API.~n", []),
