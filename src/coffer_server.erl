@@ -161,10 +161,12 @@ handle_info({config_updated, coffer_config, {delete, {Section, Key}}},
                 {true, #state{http_config=[]}} ->
                     lager:info("HTTP API is enabled but no config is set",
                                []),
-                    NewState0#state{http_config=init_http()};
+                    econfig:set_value(coffer_config, "http \"default\"",
+                              ?DEFAULT_LISTENER_CFG);
                 _ ->
-                    NewState0
-            end
+                    ok
+            end,
+            NewState0
     end,
     {noreply, NewState};
 handle_info({config_updated, coffer_config, {delete, Section}},
@@ -180,10 +182,12 @@ handle_info({config_updated, coffer_config, {delete, Section}},
                 {true, #state{http_config=[]}} ->
                     lager:info("HTTP API is enabled but no config is set",
                                []),
-                    NewState0#state{http_config=init_http()};
+                    econfig:set_value(coffer_config, "http \"default\"",
+                              ?DEFAULT_LISTENER_CFG);
                 _ ->
-                    NewState0
-            end
+                    ok
+            end,
+            NewState0
     end,
     {noreply, NewState};
 handle_info(_Info, State) ->
@@ -280,6 +284,9 @@ init_http() ->
         {true, []} ->
             coffer_util:require([crypto, public_key, ssl, ranch,
                                  cowboy]),
+
+            econfig:set_value(coffer_config, "http \"default\"",
+                              ?DEFAULT_LISTENER_CFG),
             [?DEFAULT_LISTENER];
         {true, _} ->
             coffer_util:require([crypto, public_key, ssl, ranch,
