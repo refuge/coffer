@@ -7,7 +7,7 @@
 -export([ensure_deps_started/0, ensure_started/1]).
 -export([get_app_env/1, get_app_env/2]).
 
--include_lib("../deps/hackney/include/hackney.hrl").
+-include_lib("hackney/include/hackney.hrl").
 
 %% ===================================================================
 %% Application callbacks

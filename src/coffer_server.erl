@@ -225,7 +225,7 @@ do_add_storage(StorageName, Backend, Config,
                #state{storages=Storages}=State) ->
     case proplists:get_value(StorageName, Storages) of
         undefined ->
-            relager:info("Starting storage: ~p with backend: ~p",
+            lager:info("Starting storage: ~p with backend: ~p",
                        [StorageName, Backend]),
             case coffer_storage:start(StorageName, Backend, Config) of
                 {ok, Pid} ->
