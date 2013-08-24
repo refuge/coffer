@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Coffer test</title>
+        <link rel="stylesheet" href="css/bootstrap.min.css">
+        <link rel="stylesheet" href="css/main.css" type="text/css">
+    </head>
+    <body>
+        <div class="container">
+
+            <div class="page-header">
+                <h1>Coffer Dashboard</h1>
+            </div>
+
+            <div class="btn-group">
+                <button onclick="getStorages();" type="button" class="btn btn-default">
+                    <span class="glyphicon glyphicon-refresh">
+                    </button>
+                    <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown">
+                    </span> Pick a storage <span class="caret"></span>
+                </button>
+                <ul id="storages" class="dropdown-menu" role="menu">
+                </ul>
+            </div>
+            &rarr; <span id="pickedStorage">--</span>
+            <span id="blobNumber"></span>
+
+            <div id="blobs">
+            </div>
+
+        </div> <!-- /container -->
+    </body>
+
+    <script src="js/jquery-2.0.3.js"></script>
+    <script src="js/bootstrap.js"></script>
+    <script>
+        function cleanBlobDisplay() {
+            $('#pickedStorage').text('');
+            $('#blobNumber').text("");
+
+            $('#blobs div.row').remove();
+        }
+
+        function getStorages() {
+            $.getJSON('/storages', function(data) {
+                var items = [];
+
+                $.each(data.storages, function(key, val) {
+                    items.push('<li><a onclick="pickStorage(\''+val+'\');">' + val + '</a></li>');
+                });
+
+                $('#storages li').remove();
+                $('#storages').append(items);
+            });
+
+            cleanBlobDisplay();
+        }
+
+        function pickStorage(storage) {
+            $('#pickedStorage').text(storage);
+
+            // grabbing the blob list from the storage
+            $.getJSON('/'+storage, function(data) {
+                var items = [];
+
+                $.each(data.blobs, function(key, val) {
+                    items.push('<div class="row blobentry"><div class="col-md-6">'+val.blobref+'</div><div class="col-md-2">'+val.size+' bytes</div><div class="col-md-4"><button class="btn btn-default btn-xs"><span class="glyphicon glyphicon-remove"></button></div></div>');
+                });
+
+                $('#blobs div.row').remove();
+                $('#blobs').append(items);
+
+                var n = items.length;
+                var blobNumberText = " (no blob yet)";
+                if(n > 0) {
+                    blobNumberText = " (" + n + " blobs)";
+                }
+                $('#blobNumber').text(blobNumberText);
+            });
+        }
+
+        // init
+        getStorages();
+    </script>
+</html>
