@@ -12,6 +12,9 @@
                 <h1>Coffer Dashboard</h1>
             </div>
 
+            <div id="alertBox">
+            </div>
+
             <div class="btn-group">
                 <button onclick="getStorages();" type="button" class="btn btn-default">
                     <span class="glyphicon glyphicon-refresh">
@@ -29,6 +32,26 @@
             </div>
 
         </div> <!-- /container -->
+
+        <!-- Modal -->
+        <div class="modal fade" id="deleteBlobModal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+                        <h4 class="modal-title">Delete a blob</h4>
+                    </div>
+                    <div class="modal-body">
+                        Are you sure you want to delete the blob <span id="deleteBlobRef"></span> ?
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-primary" onclick="deleteBlob();">Yes</button>
+                        <button type="button" class="btn btn-default" data-dismiss="modal">No</button>
+                    </div>
+                </div><!-- /.modal-content -->
+            </div><!-- /.modal-dialog -->
+        </div><!-- /.modal -->
+
     </body>
 
     <script src="js/jquery-2.0.3.js"></script>
@@ -56,6 +79,16 @@
             cleanBlobDisplay();
         }
 
+        function successAlert(msg) {
+            var alertItem = '<div class="alert alert-success alert-dismissable"><button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>'+msg+'</div>';
+            $('#alertBox').append(alertItem);
+        }
+
+        function warningAlert(msg) {
+            var alertItem = '<div class="alert alert-warning alert-dismissable"><button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>'+msg+'</div>';
+            $('#alertBox').append(alertItem);
+        }
+
         function pickStorage(storage) {
             $('#pickedStorage').text(storage);
 
@@ -64,22 +97,57 @@
                 var items = [];
 
                 $.each(data.blobs, function(key, val) {
-                    items.push('<div class="row blobentry"><div class="col-md-6">'+val.blobref+'</div><div class="col-md-2">'+val.size+' bytes</div><div class="col-md-4"><button class="btn btn-default btn-xs"><span class="glyphicon glyphicon-remove"></button></div></div>');
+                    var item = '<div class="row blobentry" id="blob-'
+                        +val.blobref
+                        +'"><div class="col-md-6">'
+                            +val.blobref+'</div><div class="col-md-2">'
+                            +val.size+' bytes</div><div class="col-md-4"><button onclick="displayModelDeleteBlob(\''
+                                +val.blobref
+                                +'\');" class="btn btn-default btn-xs"><span class="glyphicon glyphicon-remove"></button></div></div>';
+                        items.push(item);
+                    });
+
+                    $('#blobs div.row').remove();
+                    $('#blobs').append(items);
+
+                    var n = items.length;
+                    var blobNumberText = " (no blob yet)";
+                    if(n > 0) {
+                        blobNumberText = " (" + n + " blobs)";
+                    }
+                    $('#blobNumber').text(blobNumberText);
+                });
+            }
+
+            function displayModelDeleteBlob(blobRef) {
+                $('#deleteBlobRef').text(blobRef);
+                $('#deleteBlobModal').modal('show');
+            }
+
+            function deleteBlob() {
+                var blobRef = $('#deleteBlobRef').text();
+                $('#deleteBlobModal').modal('hide');
+                //alert("Deleting blob "+blobRef);
+
+                var storage = $('#pickedStorage').text();
+
+                var request = $.ajax({
+                    type: 'DELETE',
+                    url: '/' + storage + '/' + blobRef,
                 });
 
-                $('#blobs div.row').remove();
-                $('#blobs').append(items);
+                request.done(function(msg) {
+                    successAlert('Delete is successful');
+                });
 
-                var n = items.length;
-                var blobNumberText = " (no blob yet)";
-                if(n > 0) {
-                    blobNumberText = " (" + n + " blobs)";
-                }
-                $('#blobNumber').text(blobNumberText);
-            });
-        }
+                request.fail(function(jqXHR, textStatus) {
+                    warningAlert('Delete has failed');
+                });
+            }
 
-        // init
-        getStorages();
-    </script>
-</html>
+            // init
+            getStorages();
+
+            $().alert();
+        </script>
+    </html>
