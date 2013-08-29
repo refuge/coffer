@@ -13,7 +13,7 @@ dispatch_rules() ->
 dispatch_rules(Prefix0) ->
     Rules = [{"/", coffer_http_root, []},
              {"/static/[...]", cowboy_static, [
-                     {directory, {priv_dir, coffer, www}},
+                     {directory, {priv_dir, coffer_dashboard, www}},
                      {mimetypes, {fun mimetypes:path_to_mimes/2, default}}
                  ]},
              {"/config", coffer_http_config, []},
