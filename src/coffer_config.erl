@@ -11,6 +11,10 @@
 -define(SERVER, ?MODULE).
 
 -export([start_link/0]).
+-export([bind_opts/1,
+         start_listener/3,
+         http_env/0,
+         init_http/0]).
 
 %% OTP API
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,

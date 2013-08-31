@@ -38,20 +38,6 @@ handle_req(<<"GET">>, [], Req) ->
     cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>}],
                  JsonConfig, Req1);
 
-handle_req(<<"GET">>, [{section, <<"http">>}], Req) ->
-    %% clean config, convert to binay value
-    %%
-    Config = lists:map(fun(Name0) ->
-                    Settings = econfig:get_value(coffer_config, Name0),
-                    KVs = [{list_to_binary(K),
-                            list_to_binary(V)} || {K, V}
-                                                  <- Settings],
-                    "http" ++ Name = Name0,
-                    {clean_name(Name), KVs}
-            end, econfig:prefix(coffer_config, "http")),
-    {JsonConfig, Req1} = coffer_http_util:to_json([{<<"htttp">>, Config}], Req),
-    cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>}],
-                 JsonConfig, Req1);
 handle_req(<<"GET">>, [{section, Section}], Req) ->
     KVs = [{list_to_binary(K), list_to_binary(V)}
            || {K, V} <- econfig:get_value(coffer_config,
@@ -59,23 +45,7 @@ handle_req(<<"GET">>, [{section, Section}], Req) ->
     {Json, Req1} = coffer_http_util:to_json([{Section, KVs}], Req),
     cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>}],
                  Json, Req1);
-handle_req(<<"GET">>, [{key, Key}, {section, <<"http">>}], Req) ->
 
-    HttpSections = lists:map(fun(Section) ->
-                    "http" ++ Name = Section,
-                    {clean_name(Name), Section}
-            end, econfig:prefix(coffer_config, "http")),
-
-    Config = case lists:keyfind(Key, 1, HttpSections) of
-        false ->
-            [{}];
-        {_, Section} ->
-            Settings = econfig:get_value(coffer_config, Section),
-            [{list_to_binary(K), list_to_binary(V)} || {K, V} <- Settings]
-    end,
-    {JsonConfig, Req1} = coffer_http_util:to_json(Config, Req),
-    cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>}],
-                 JsonConfig, Req1);
 handle_req(<<"GET">>, [{key, Key}, {section, Section}], Req) ->
     case econfig:get_value(coffer_config,  binary_to_list(Section),
                            binary_to_list(Key)) of
@@ -94,35 +64,36 @@ handle_req(<<"PUT">>, [{section, Section}], Req) ->
             Config = jsx:decode(Bin),
             case Section of
                 <<"http">> ->
-                    lists:foreach(fun({Name, Conf}) ->
-                                Section1 = << "http \"", Name/binary, "\"">>,
-                                ok = econfig:set_value(coffer_config,
-                                                       Section1, Conf)
-                        end, Config);
+                    %% we only store the new http config if we are able to
+                    %% restart the server
+                    spawn(fun() ->
+                                case do_restart_http(nil, Config) of
+                                    true ->
+                                        %% store the config
+                                        econfig:set_value(coffer_config,
+                                                          Section, Config),
+                                        ok;
+                                    false ->
+                                        ok
+                                end
+                        end),
+                    coffer_http_util:ok(202, Req);
                 _ ->
                     ok = econfig:set_value(coffer_config, Section,
-                                           Config)
-            end,
-            coffer_http_util:ok(202, Req1);
-        Error ->
-            Error
-    end;
-handle_req(<<"PUT">>, [{key, Key}, {section, <<"http">>}], Req) ->
-    case cowboy_req:body(Req) of
-        {ok, Bin, Req1} ->
-            Value = jsx:decode(Bin),
-            Section = << "http \"", Key/binary, "\"" >>,
-            case econfig:set_value(coffer_config, Section, Value) of
-                ok ->
-                    coffer_http_util:ok(202, Req1);
-                Error ->
-                    lager:error("config update: ~p~n", [Error]),
-                    coffer_http_util:error(500, Req1)
+                                           Config),
+                    coffer_http_util:ok(202, Req1)
             end;
         Error ->
             Error
     end;
 
+handle_req(<<"PUT">>, [{key, <<"bind_http">>}, {section, <<"core">>}], Req) ->
+    spawn(fun() -> maybe_restart_http(<<"core">>, <<"bind_http">>, Req) end),
+    coffer_http_util:ok(202, Req);
+
+handle_req(<<"PUT">>, [{key, Key}, {section, <<"http">>}], Req) ->
+    spawn(fun() -> maybe_restart_http(<<"http">>, Key, Req) end),
+    coffer_http_util:ok(202, Req);
 
 handle_req(<<"PUT">>, [{key, Key}, {section, Section}], Req) ->
     case cowboy_req:body(Req) of
@@ -143,27 +114,43 @@ handle_req(<<"PUT">>, [{key, Key}, {section, Section}], Req) ->
 handle_req(<<"DELETE">>, [{section, Section}], Req) ->
     case Section of
         <<"http">> ->
-            HttpSections = econfig:prefix(coffer_config, "http"),
-
-            lists:foreach(fun(Section1) ->
-                        ok = econfig:delete_value(coffer_config, Section1)
-                end, HttpSections);
+            spawn(fun() ->
+                        case do_restart_http(nil, []) of
+                            true ->
+                                econfig:delete_value(coffer_config, "http");
+                            false ->
+                                ok
+                        end
+                end),
+            coffer_http_util:ok(202, Req);
         _ ->
-            ok = econfig:delete_value(coffer_config, Section)
-    end,
+            ok = econfig:delete_value(coffer_config, Section),
+            coffer_http_util:ok(202, Req)
+    end;
+
+
+handle_req(<<"DELETE">>, [{key, <<"bind_http">>},
+                          {section, <<"core">>}], Req) ->
+
+    spawn(fun() -> stop_http() end),
     coffer_http_util:ok(202, Req);
 
 handle_req(<<"DELETE">>, [{key, Key}, {section, <<"http">>}], Req) ->
     Section = << "http \"", Key/binary, "\"" >>,
 
-    case econfig:delete_value(coffer_config, binary_to_list(Section)) of
-        ok ->
-            coffer_http_util:ok(202, Req);
-        Error ->
-            lager:error("config update: ~p~n", [Error]),
-            coffer_http_util:error(500, Req)
-    end;
+    Conf = proplists:delete(binary_to_list(Key),
+                            econfig:get_value(coffer_config, "http")),
 
+    spawn(fun() ->
+                case do_restart_http(nil, Conf) of
+                    true ->
+                        econfig:delete_value(coffer_config, binary_to_list(Section),
+                                             binary_to_list(Key));
+                    false ->
+                        ok
+                end
+        end),
+    coffer_http_util:ok(202, Req);
 handle_req(<<"DELETE">>, [{key, Key}, {section, Section}], Req) ->
     case econfig:delete_value(coffer_config, binary_to_list(Section),
                               binary_to_list(Key)) of
@@ -179,6 +166,77 @@ handle_req(_, _, Req) ->
 
 terminate(_Reason, _Req, _State) ->
     ok.
+
+
+maybe_restart_http(Section, Key, Req) ->
+    case cowboy_req:body(Req) of
+        {ok, Bin, Req1} ->
+            Value = coffer_util:to_list(jsx:decode(Bin)),
+            Conf = econfig:get_value(coffer_config, "http"),
+            Key1 = binary_to_list(Key),
+            Conf1 = lists:keyreplace(Key1, 1, Conf, {Key1, Value}),
+
+            Bind = case Key of
+                <<"bind_http">> -> Value;
+                _ -> nil
+            end,
+
+            case do_restart_http(Bind, Conf1) of
+                true ->
+                    ok = econfig:set_value(coffer_config, Section, Key, Value),
+                    coffer_http_util:ok(202, Req1);
+                false ->
+                    coffer_http_util:error(400, "not_restarted", Req1)
+            end;
+        Error ->
+            Error
+    end.
+
+do_restart_http(nil, Conf) ->
+    Bind = econfig:get_value(coffer_config, "core", "bind_http", ""),
+    do_restart_http(Bind, Conf);
+
+do_restart_http(Bind, Conf0) ->
+    %% we only expect to get string in parse config.
+    Conf = lists:map(fun({K, V}) ->
+                    {coffer_util:to_list(K), coffer_util:to_list(V)}
+            end, Conf0),
+
+    restart_http(Bind, Conf).
+
+restart_http("", _Conf) ->
+    case econfig:get_value(coffer_config, "core", "bind_http", "") of
+        "" ->
+            true;
+        _ ->
+            stop_http(),
+            true
+    end;
+restart_http(Bind, Conf) ->
+    %% stop the HTTP API
+    %% Note: it would be better to first test if we can start a new listener
+    %% gracefully and then stop the old one if it's ok. but unfortunately we
+    %% can't yet since we are using cowboy.
+    stop_http(),
+
+    Opts = coffer_config:bind_opts(Bind),
+    {NbAcceptors, SslOpts, IsSsl} = coffer_config_util:http_config(Conf),
+    ListenerOpts = {NbAcceptors, Opts ++ SslOpts, IsSsl},
+
+    case coffer_config:start_listener(ListenerOpts, coffer_config:http_env(),
+                                      1) of
+
+        {_, false} ->
+            %% restart with the old conf
+            coffer_config:init_http(),
+            false;
+        _ ->
+            true
+    end.
+
+stop_http() ->
+    cowboy:stop_listener(coffer_http),
+    lager:info("HTTP API stopped", []).
 
 %% internals
 %%

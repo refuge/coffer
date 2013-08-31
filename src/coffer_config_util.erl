@@ -5,12 +5,13 @@
 
 -module(coffer_config_util).
 
--export([http_config/0]).
-
+-export([http_config/0, http_config/1]).
 
 http_config() ->
     Conf = econfig:get_value(coffer_config, "http"),
+    http_config(Conf) .
 
+http_config(Conf) ->
     %% get max of acceptors
     NbAcceptors = list_to_integer(
             proplists:get_value("nb_acceptors", Conf, "100")

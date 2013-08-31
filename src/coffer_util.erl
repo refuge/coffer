@@ -19,6 +19,7 @@
 
 -export([gettempdir/0]).
 -export([require/1]).
+-export([to_list/1]).
 
 -ifdef(sha_workaround).
 -define(SHA(Data), crypto:sha(Data)).
@@ -151,3 +152,12 @@ require([App|Rest]) ->
 		{error, {already_started, App}} -> ok
 	end,
 	require(Rest).
+
+
+%% @doc converto a value to a list
+to_list(V) when is_list(V) ->
+    V;
+to_list(V) when is_binary(V) ->
+    binary_to_list(V);
+to_list(V) when is_integer(V) ->
+    integer_to_list(V).
