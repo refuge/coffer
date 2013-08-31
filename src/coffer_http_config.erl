@@ -66,18 +66,19 @@ handle_req(<<"PUT">>, [{section, Section}], Req) ->
                 <<"http">> ->
                     %% we only store the new http config if we are able to
                     %% restart the server
-                    spawn(fun() ->
-                                case do_restart_http(nil, Config) of
-                                    true ->
-                                        %% store the config
-                                        econfig:set_value(coffer_config,
-                                                          Section, Config),
-                                        ok;
-                                    false ->
-                                        ok
-                                end
-                        end),
-                    coffer_http_util:ok(202, Req);
+                    %% remove the connection from the connection supervisor
+                    ok = ranch:unlink_connection(coffer_http),
+
+                    case do_restart_http(nil, Config) of
+                        true ->
+                            %% store the config
+                            econfig:set_value(coffer_config,
+                                              Section, Config),
+                            ok;
+                        false ->
+                            ok
+                    end,
+                    coffer_http_util:ok(Req);
                 _ ->
                     ok = econfig:set_value(coffer_config, Section,
                                            Config),
@@ -88,12 +89,18 @@ handle_req(<<"PUT">>, [{section, Section}], Req) ->
     end;
 
 handle_req(<<"PUT">>, [{key, <<"bind_http">>}, {section, <<"core">>}], Req) ->
-    spawn(fun() -> maybe_restart_http(<<"core">>, <<"bind_http">>, Req) end),
-    coffer_http_util:ok(202, Req);
+    %% remove the connection from the connection supervisor
+    ranch:unlink_connection(coffer_http),
+
+    maybe_restart_http(<<"core">>, <<"bind_http">>, Req),
+    coffer_http_util:ok(Req);
 
 handle_req(<<"PUT">>, [{key, Key}, {section, <<"http">>}], Req) ->
-    spawn(fun() -> maybe_restart_http(<<"http">>, Key, Req) end),
-    coffer_http_util:ok(202, Req);
+    %% remove the connection from the connection supervisor
+    ok = ranch:unlink_connection(coffer_http),
+
+    maybe_restart_http(<<"http">>, Key, Req),
+    coffer_http_util:ok(Req);
 
 handle_req(<<"PUT">>, [{key, Key}, {section, Section}], Req) ->
     case cowboy_req:body(Req) of
@@ -114,15 +121,18 @@ handle_req(<<"PUT">>, [{key, Key}, {section, Section}], Req) ->
 handle_req(<<"DELETE">>, [{section, Section}], Req) ->
     case Section of
         <<"http">> ->
-            spawn(fun() ->
-                        case do_restart_http(nil, []) of
-                            true ->
-                                econfig:delete_value(coffer_config, "http");
-                            false ->
-                                ok
-                        end
-                end),
-            coffer_http_util:ok(202, Req);
+            %% remove the connection from the connection supervisor
+            ok = ranch:unlink_connection(coffer_http),
+
+            %% we only store the new http config if we are able to
+            %% restart the server
+            case do_restart_http(nil, []) of
+                true ->
+                    econfig:delete_value(coffer_config, "http");
+                false ->
+                    ok
+            end,
+            coffer_http_util:ok(Req);
         _ ->
             ok = econfig:delete_value(coffer_config, Section),
             coffer_http_util:ok(202, Req)
@@ -132,7 +142,10 @@ handle_req(<<"DELETE">>, [{section, Section}], Req) ->
 handle_req(<<"DELETE">>, [{key, <<"bind_http">>},
                           {section, <<"core">>}], Req) ->
 
-    spawn(fun() -> stop_http() end),
+    %% remove the connection from the connection supervisor
+    ok = ranch:unlink_connection(coffer_http),
+
+    stop_http(),
     coffer_http_util:ok(202, Req);
 
 handle_req(<<"DELETE">>, [{key, Key}, {section, <<"http">>}], Req) ->
@@ -141,15 +154,16 @@ handle_req(<<"DELETE">>, [{key, Key}, {section, <<"http">>}], Req) ->
     Conf = proplists:delete(binary_to_list(Key),
                             econfig:get_value(coffer_config, "http")),
 
-    spawn(fun() ->
-                case do_restart_http(nil, Conf) of
-                    true ->
-                        econfig:delete_value(coffer_config, binary_to_list(Section),
-                                             binary_to_list(Key));
-                    false ->
-                        ok
-                end
-        end),
+    %% remove the connection from the connection supervisor
+    ok = ranch:unlink_connection(coffer_http),
+
+    case do_restart_http(nil, Conf) of
+        true ->
+            econfig:delete_value(coffer_config, binary_to_list(Section),
+                                 binary_to_list(Key));
+        false ->
+            ok
+    end,
     coffer_http_util:ok(202, Req);
 handle_req(<<"DELETE">>, [{key, Key}, {section, Section}], Req) ->
     case econfig:delete_value(coffer_config, binary_to_list(Section),
