@@ -29,7 +29,8 @@ start_link() ->
 
 init([]) ->
     CofferServer = ?CHILD(coffer_server, [[]]),
+    Config = ?CHILD(coffer_config, []),
 
-    Children = [CofferServer],
+    Children = [Config, CofferServer],
     RestartStrategy = {one_for_one, 1, 60},
     {ok, { RestartStrategy, Children } }.

@@ -1,97 +1,36 @@
+%%% -*- erlang -*-
+%%%
+%%% This file is part of coffer released under the Apache license 2.
+%%% See the NOTICE for more information.
+
 -module(coffer_config_util).
 
+-export([http_config/0]).
 
--export([parse_http_config/1,
-         http_settings/0,
-         http_ref/1]).
 
--define(DEFAULT_PORT, 7000).
+http_config() ->
+    Conf = econfig:get_value(coffer_config, "http"),
 
-parse_http_config(Section) ->
-    Conf = econfig:get_value(coffer_config, Section),
-    case proplists:get_value("listen", Conf) of
-        undefined ->
-            unbound;
-        Addr ->
-            %% get listener ref
-            ListenerRef = http_ref(Section),
+    %% get max of acceptors
+    NbAcceptors = list_to_integer(
+            proplists:get_value("nb_acceptors", Conf, "100")
+    ),
 
-            %% get max of acceptors
-            NbAcceptors = list_to_integer(
-                    proplists:get_value("nb_acceptors", Conf, "100")
-            ),
-
-            %% parse the IP an port
-            Opts = case parse_address(list_to_binary(Addr)) of
-                {any, Port} ->
-                    [{port, Port}];
-                {Ip, Port} ->
-                    {ok, ParsedIp} = inet_parse:address(Ip),
-                    [{port, Port}, {ip, ParsedIp}]
-            end,
-
-            %% append the SSL configuration if needed
-            case is_ssl(Conf) of
-                false ->
-                    {ListenerRef, {NbAcceptors, Opts, false}};
-                true ->
-                    Opts1 = Opts ++ ssl_options(Section),
-                    {ListenerRef, {NbAcceptors, Opts1, true}}
-            end
-        end.
-
-http_settings() ->
-    case econfig:prefix(coffer_config, "http") of
-        [] -> [];
-        Sections ->
-            lists:foldl(fun(Section, Acc) ->
-                        case parse_http_config(Section) of
-                            unbound -> Acc;
-                            Conf -> [Conf | Acc]
-                        end
-                end, [], Sections)
+    %% parse the SSL configuration if needed
+    case is_ssl(Conf) of
+        false ->
+            {NbAcceptors, [], false};
+        true ->
+            {NbAcceptors, ssl_options(Conf), true}
     end.
 
-http_ref(Section) ->
-    "http" ++ Rest = Section,
-    http_ref1(Rest).
-
-http_ref1([ $\s | Rest ]) ->
-    http_ref1(Rest);
-http_ref1([ $\" | Rest ]) ->
-    http_ref1(Rest);
-http_ref1(Name0) ->
-    Name = case re:split(Name0, "\"", [{return, list}]) of
-        [Name0] -> Name0;
-        [Name1, _] -> Name1
-    end,
-    list_to_atom(Name).
 
 %% internals
 %%
-parse_address(<<"[", Rest/binary>>) ->
-    case binary:split(Rest, <<"]">>) of
-        [Host, <<>>] ->
-            {binary_to_list(Host), ?DEFAULT_PORT};
-        [Host, <<":", Port/binary>>] ->
-            {binary_to_list(Host),
-             list_to_integer(binary_to_list(Port))};
-        _ ->
-            parse_address(Rest)
-    end;
-parse_address(Addr) ->
-    case binary:split(Addr, <<":">>) of
-        [Port] ->
-            {any, list_to_integer(binary_to_list(Port))};
-        [Host, Port] ->
-            {binary_to_list(Host),
-             list_to_integer(binary_to_list(Port))}
-    end.
 
-
-ssl_options(Section) ->
-    CertFile = econfig:get_value(coffer_config, Section, "cert_file", nil),
-    KeyFile = econfig:get_value(coffer_config, Section, "key_file", nil),
+ssl_options(Conf) ->
+    CertFile = proplists:get_value("cert_file", Conf, nil),
+    KeyFile = proplists:get_value("key_file", Conf, nil),
     case CertFile /= nil of
         true ->
             SslOpts0 = [{certfile, CertFile}],
@@ -100,8 +39,7 @@ ssl_options(Section) ->
             {ok, PemBin} = file:read_file(CertFile),
             CertEntries = public_key:pem_decode(PemBin),
 
-            SslOpts = case econfig:get_value(coffer_config, Section,
-                                             "key_file", nil) of
+            SslOpts = case KeyFile of
                 nil ->
                     if length(CertEntries) >= 2 ->
                             SslOpts0;
@@ -114,16 +52,14 @@ ssl_options(Section) ->
             end,
 
             %% set password if one is needed for the cert
-            SslOpts1 = case econfig:get_value(coffer_config, Section,
-                                              "password", nil) of
+            SslOpts1 = case proplists:get_value("password", Conf, nil) of
                 nil -> SslOpts;
                 Password ->
                     SslOpts ++ [{password, Password}]
             end,
 
             %% check if cacerts are already set in the pem file
-            SslOpts2 = case econfig:get_value(coffer_config, Section,
-                                              "cacert_file", nil) of
+            SslOpts2 = case proplists:get_value("cacert_file", Conf, nil) of
                 nil ->
                     case CertEntries of
                         [_P, _Cert| CaCerts] when CaCerts /= [] ->
@@ -136,17 +72,15 @@ ssl_options(Section) ->
             end,
 
             % do we verify certificates ?
-            FinalSslOpts = case econfig:get_value(coffer_config, Section,
-                                                  "verify_ssl_certificates",
-                                                  "false") of
+            FinalSslOpts = case proplists:get_value("verify_ssl_certificates",
+                                                    Conf, "false") of
                 "false" ->
                     SslOpts2 ++ [{verify, verify_none}];
                 "true" ->
                     %% get depth
                     Depth = list_to_integer(
-                            econfig:get_value(coffer_config, Section,
-                                              "ssl_certificate_max_depth",
-                                              "1")
+                        proplists:get_value("ssl_certificate_max_depth", Conf,
+                                            "1")
                     ),
                     %% check if we need a CA.
                     WithCA = SslOpts1 /= SslOpts1,
