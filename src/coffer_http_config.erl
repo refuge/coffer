@@ -74,11 +74,10 @@ handle_req(<<"PUT">>, [{section, Section}], Req) ->
                             %% store the config
                             econfig:set_value(coffer_config,
                                               Section, Config),
-                            ok;
+                            coffer_http_util:ok(Req1);
                         false ->
-                            ok
-                    end,
-                    coffer_http_util:ok(Req);
+                            coffer:error(<<"config_unchanged">>, Req1)
+                    end;
                 _ ->
                     ok = econfig:set_value(coffer_config, Section,
                                            Config),
@@ -92,16 +91,12 @@ handle_req(<<"PUT">>, [{key, <<"bind_http">>}, {section, <<"core">>}], Req) ->
     %% remove the connection from the connection supervisor
     ranch:unlink_connection(coffer_http),
 
-    maybe_restart_http(<<"core">>, <<"bind_http">>, Req),
-    coffer_http_util:ok(Req);
-
+    maybe_restart_http(<<"core">>, <<"bind_http">>, Req);
 handle_req(<<"PUT">>, [{key, Key}, {section, <<"http">>}], Req) ->
     %% remove the connection from the connection supervisor
     ok = ranch:unlink_connection(coffer_http),
 
-    maybe_restart_http(<<"http">>, Key, Req),
-    coffer_http_util:ok(Req);
-
+    maybe_restart_http(<<"http">>, Key, Req);
 handle_req(<<"PUT">>, [{key, Key}, {section, Section}], Req) ->
     case cowboy_req:body(Req) of
         {ok, Bin, Req1} ->
@@ -112,7 +107,7 @@ handle_req(<<"PUT">>, [{key, Key}, {section, Section}], Req) ->
                     coffer_http_util:ok(202, Req1);
                 Error ->
                     lager:error("config update: ~p~n", [Error]),
-                    coffer_http_util:error(500, Req1)
+                    coffer_http_util:error(Error, Req1)
             end;
         Error ->
             Error
@@ -128,11 +123,11 @@ handle_req(<<"DELETE">>, [{section, Section}], Req) ->
             %% restart the server
             case do_restart_http(nil, []) of
                 true ->
-                    econfig:delete_value(coffer_config, "http");
+                    econfig:delete_value(coffer_config, "http"),
+                    coffer_http_util:ok(Req);
                 false ->
-                    ok
-            end,
-            coffer_http_util:ok(Req);
+                    coffer_http_util:error(<<"configuration unchanged">>, Req)
+            end;
         _ ->
             ok = econfig:delete_value(coffer_config, Section),
             coffer_http_util:ok(202, Req)
@@ -160,11 +155,11 @@ handle_req(<<"DELETE">>, [{key, Key}, {section, <<"http">>}], Req) ->
     case do_restart_http(nil, Conf) of
         true ->
             econfig:delete_value(coffer_config, binary_to_list(Section),
-                                 binary_to_list(Key));
+                                 binary_to_list(Key)),
+            coffer_http_util:ok(202, Req);
         false ->
-            ok
-    end,
-    coffer_http_util:ok(202, Req);
+            coffer_http_util:error(<<"configuration unchanged">>, Req)
+    end;
 handle_req(<<"DELETE">>, [{key, Key}, {section, Section}], Req) ->
     case econfig:delete_value(coffer_config, binary_to_list(Section),
                               binary_to_list(Key)) of
@@ -198,9 +193,9 @@ maybe_restart_http(Section, Key, Req) ->
             case do_restart_http(Bind, Conf1) of
                 true ->
                     ok = econfig:set_value(coffer_config, Section, Key, Value),
-                    coffer_http_util:ok(202, Req1);
+                    coffer_http_util:ok(Req1);
                 false ->
-                    coffer_http_util:error(400, "not_restarted", Req1)
+                    coffer_http_util:error(500, "config unchanged", Req1)
             end;
         Error ->
             Error
