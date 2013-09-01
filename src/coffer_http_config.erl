@@ -47,7 +47,7 @@ handle_req(<<"GET">>, [{section, Section}], Req) ->
                  Json, Req1);
 
 handle_req(<<"GET">>, [{key, Key}, {section, Section}], Req) ->
-    case econfig:get_value(coffer_config,  binary_to_list(Section),
+    case coffer_config:get( binary_to_list(Section),
                            binary_to_list(Key)) of
         undefined ->
             coffer_http_util:not_found(Req);
@@ -72,14 +72,13 @@ handle_req(<<"PUT">>, [{section, Section}], Req) ->
                     case do_restart_http(nil, Config) of
                         true ->
                             %% store the config
-                            econfig:set_value(coffer_config,
-                                              Section, Config),
+                            coffer_config:set(Section, Config),
                             coffer_http_util:ok(Req1);
                         false ->
                             coffer:error(<<"config_unchanged">>, Req1)
                     end;
                 _ ->
-                    ok = econfig:set_value(coffer_config, Section,
+                    ok = coffer_config:set(Section,
                                            Config),
                     coffer_http_util:ok(202, Req1)
             end;
@@ -101,7 +100,7 @@ handle_req(<<"PUT">>, [{key, Key}, {section, Section}], Req) ->
     case cowboy_req:body(Req) of
         {ok, Bin, Req1} ->
             Value = jsx:decode(Bin),
-            case econfig:set_value(coffer_config, Section, Key,
+            case coffer_config:set(Section, Key,
                                    Value) of
                 ok ->
                     coffer_http_util:ok(202, Req1);
@@ -123,13 +122,13 @@ handle_req(<<"DELETE">>, [{section, Section}], Req) ->
             %% restart the server
             case do_restart_http(nil, []) of
                 true ->
-                    econfig:delete_value(coffer_config, "http"),
+                    coffer_config:del("http"),
                     coffer_http_util:ok(Req);
                 false ->
                     coffer_http_util:error(<<"configuration unchanged">>, Req)
             end;
         _ ->
-            ok = econfig:delete_value(coffer_config, Section),
+            ok = coffer_config:del(Section),
             coffer_http_util:ok(202, Req)
     end;
 
@@ -147,22 +146,20 @@ handle_req(<<"DELETE">>, [{key, Key}, {section, <<"http">>}], Req) ->
     Section = << "http \"", Key/binary, "\"" >>,
 
     Conf = proplists:delete(binary_to_list(Key),
-                            econfig:get_value(coffer_config, "http")),
+                            coffer_config:get("http")),
 
     %% remove the connection from the connection supervisor
     ok = ranch:unlink_connection(coffer_http),
 
     case do_restart_http(nil, Conf) of
         true ->
-            econfig:delete_value(coffer_config, binary_to_list(Section),
-                                 binary_to_list(Key)),
+            coffer_config:del(binary_to_list(Section), binary_to_list(Key)),
             coffer_http_util:ok(202, Req);
         false ->
             coffer_http_util:error(<<"configuration unchanged">>, Req)
     end;
 handle_req(<<"DELETE">>, [{key, Key}, {section, Section}], Req) ->
-    case econfig:delete_value(coffer_config, binary_to_list(Section),
-                              binary_to_list(Key)) of
+    case coffer_config:del(binary_to_list(Section), binary_to_list(Key)) of
         ok ->
             coffer_http_util:ok(202, Req);
         Error ->
@@ -181,7 +178,7 @@ maybe_restart_http(Section, Key, Req) ->
     case cowboy_req:body(Req) of
         {ok, Bin, Req1} ->
             Value = coffer_util:to_list(jsx:decode(Bin)),
-            Conf = econfig:get_value(coffer_config, "http"),
+            Conf = coffer_config:get("http"),
             Key1 = binary_to_list(Key),
             Conf1 = lists:keyreplace(Key1, 1, Conf, {Key1, Value}),
 
@@ -192,7 +189,7 @@ maybe_restart_http(Section, Key, Req) ->
 
             case do_restart_http(Bind, Conf1) of
                 true ->
-                    ok = econfig:set_value(coffer_config, Section, Key, Value),
+                    ok = coffer_config:set(Section, Key, Value),
                     coffer_http_util:ok(Req1);
                 false ->
                     coffer_http_util:error(500, "config unchanged", Req1)
@@ -202,7 +199,7 @@ maybe_restart_http(Section, Key, Req) ->
     end.
 
 do_restart_http(nil, Conf) ->
-    Bind = econfig:get_value(coffer_config, "core", "bind_http", ""),
+    Bind = coffer_config:get("core", "bind_http", ""),
     do_restart_http(Bind, Conf);
 
 do_restart_http(Bind, Conf0) ->
@@ -214,7 +211,7 @@ do_restart_http(Bind, Conf0) ->
     restart_http(Bind, Conf).
 
 restart_http("", _Conf) ->
-    case econfig:get_value(coffer_config, "core", "bind_http", "") of
+    case coffer_config:get("core", "bind_http", "") of
         "" ->
             true;
         _ ->

@@ -11,6 +11,11 @@
 -define(SERVER, ?MODULE).
 
 -export([start_link/0]).
+
+-export([set/2, set/3,
+         get/1, get/2, get/3,
+         del/1, del/2]).
+
 -export([bind_opts/1,
          start_listener/3,
          http_env/0,
@@ -26,6 +31,29 @@
 
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+set(Section, Value) ->
+    econfig:set_value(coffer_config, Section, Value).
+
+set(Section, Key, Value) ->
+    econfig:set_value(coffer_config, Section, Key, Value).
+
+get(Section) ->
+    econfig:get_value(coffer_config, Section).
+
+get(Section, Key) ->
+    econfig:get_value(coffer_config, Section, Key).
+
+get(Section, Key, Default) ->
+    econfig:get_value(coffer_config, Section, Key, Default).
+
+del(Section) ->
+    econfig:delete_value(coffer_config, Section).
+
+del(Section, Key) ->
+    econfig:delete_value(coffer_config, Section, Key).
+
+%% PRIVATE API
 
 init([]) ->
     %% start the HTTP api if needed
