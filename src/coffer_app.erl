@@ -16,17 +16,10 @@
 start(_StartType, _StartArgs) ->
     coffer_deps:ensure(),
     ensure_deps_started(),
-    ok = init_config(),
     coffer_sup:start_link().
 
 stop(_State) ->
     ok.
-
-init_config() ->
-    DefaultConfDir =  filename:join([code:root_dir(), "./etc"]),
-    ConfFile = get_app_env(config_file, filename:join(DefaultConfDir,
-                                                      "coffer.ini")),
-    econfig:open_config(coffer_config, ConfFile).
 
 ensure_deps_started() ->
     {ok, Deps} = application:get_key(coffer, applications),
