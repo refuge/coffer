@@ -51,46 +51,44 @@ handle_req(<<"PUT">>, [{section, Section}], Req) ->
     case cowboy_req:body(Req) of
         {ok, Bin, Req1} ->
             Config = jsx:decode(Bin),
+            Bind = coffer_config:get("core", "bind_http", ""),
             case Section of
-                <<"http">> ->
-                    %% we only store the new http config if we are able to
-                    %% restart the server
+                <<"core">> when Bind /= "" ->
                     %% remove the connection from the connection supervisor
-                    ok = ranch:unlink_connection(coffer_http),
+                    ok = ranch:unlink_connection(coffer_http);
 
-                    case do_restart_http(nil, Config) of
-                        true ->
-                            %% store the config
-                            coffer_config:set(Section, Config),
-                            coffer_http_util:ok(Req1);
-                        false ->
-                            coffer:error(<<"config_unchanged">>, Req1)
-                    end;
+                <<"http">> ->
+                    %% remove the connection from the connection supervisor
+                    ok = ranch:unlink_connection(coffer_http);
                 _ ->
-                    ok = coffer_config:set(Section,
-                                           Config),
-                    coffer_http_util:ok(202, Req1)
+                    ok
+            end,
+            case coffer_config:set(Section, Config) of
+                ok ->
+                    coffer_http_util:ok(202, Req1);
+                {error, Reason} ->
+                    coffer:error(Reason, Req1);
+                _ ->
+                    coffer:error(<<"unknown error">>, Req1)
             end;
         Error ->
             Error
     end;
 
-handle_req(<<"PUT">>, [{key, <<"bind_http">>}, {section, <<"core">>}], Req) ->
-    %% remove the connection from the connection supervisor
-    ranch:unlink_connection(coffer_http),
-
-    maybe_restart_http(<<"core">>, <<"bind_http">>, Req);
-handle_req(<<"PUT">>, [{key, Key}, {section, <<"http">>}], Req) ->
-    %% remove the connection from the connection supervisor
-    ok = ranch:unlink_connection(coffer_http),
-
-    maybe_restart_http(<<"http">>, Key, Req);
 handle_req(<<"PUT">>, [{key, Key}, {section, Section}], Req) ->
     case cowboy_req:body(Req) of
         {ok, Bin, Req1} ->
             Value = jsx:decode(Bin),
-            case coffer_config:set(Section, Key,
-                                   Value) of
+            case {Section, Key} of
+                {<<"core">>, <<"bind_http">>} ->
+                    ok = ranch:unlink_connection(coffer_http);
+                {<<"http">>, _} ->
+                    ok = ranch:unlink_connection(coffer_http);
+                _ ->
+                    ok
+            end,
+
+            case coffer_config:set(Section, Key, Value) of
                 ok ->
                     coffer_http_util:ok(202, Req1);
                 Error ->
@@ -102,53 +100,35 @@ handle_req(<<"PUT">>, [{key, Key}, {section, Section}], Req) ->
     end;
 
 handle_req(<<"DELETE">>, [{section, Section}], Req) ->
+    Bind = coffer_config:get("core", "bind_http", ""),
     case Section of
+        <<"core">> when Bind /= "" ->
+            %% remove the connection from the connection supervisor
+            ok = ranch:unlink_connection(coffer_http);
         <<"http">> ->
             %% remove the connection from the connection supervisor
-            ok = ranch:unlink_connection(coffer_http),
-
-            %% we only store the new http config if we are able to
-            %% restart the server
-            case do_restart_http(nil, []) of
-                true ->
-                    coffer_config:del("http"),
-                    coffer_http_util:ok(Req);
-                false ->
-                    coffer_http_util:error(<<"configuration unchanged">>, Req)
-            end;
+            ok = ranch:unlink_connection(coffer_http);
         _ ->
-            ok = coffer_config:del(Section),
-            coffer_http_util:ok(202, Req)
-    end;
-
-
-handle_req(<<"DELETE">>, [{key, <<"bind_http">>},
-                          {section, <<"core">>}], Req) ->
-
-    %% remove the connection from the connection supervisor
-    ok = ranch:unlink_connection(coffer_http),
-
-    stop_http(),
-    coffer_http_util:ok(202, Req);
-
-handle_req(<<"DELETE">>, [{key, Key}, {section, <<"http">>}], Req) ->
-    Section = << "http \"", Key/binary, "\"" >>,
-
-    Conf = proplists:delete(binary_to_list(Key),
-                            coffer_config:get("http")),
-
-    %% remove the connection from the connection supervisor
-    ok = ranch:unlink_connection(coffer_http),
-
-    case do_restart_http(nil, Conf) of
-        true ->
-            coffer_config:del(binary_to_list(Section), binary_to_list(Key)),
+            ok
+    end,
+    case coffer_config:del(Section) of
+        ok ->
             coffer_http_util:ok(202, Req);
-        false ->
-            coffer_http_util:error(<<"configuration unchanged">>, Req)
+        Error ->
+            lager:error("config update: ~p~n", [Error]),
+            coffer_http_util:error(Error, Req)
     end;
+
 handle_req(<<"DELETE">>, [{key, Key}, {section, Section}], Req) ->
-    case coffer_config:del(binary_to_list(Section), binary_to_list(Key)) of
+    case {Section, Key} of
+        {<<"core">>, <<"bind_http">>} ->
+            ok = ranch:unlink_connection(coffer_http);
+        {<<"http">>, _} ->
+            ok = ranch:unlink_connection(coffer_http);
+        _ ->
+            ok
+    end,
+    case coffer_config:del(Section, Key) of
         ok ->
             coffer_http_util:ok(202, Req);
         Error ->
@@ -161,74 +141,3 @@ handle_req(_, _, Req) ->
 
 terminate(_Reason, _Req, _State) ->
     ok.
-
-
-maybe_restart_http(Section, Key, Req) ->
-    case cowboy_req:body(Req) of
-        {ok, Bin, Req1} ->
-            Value = coffer_util:to_list(jsx:decode(Bin)),
-            Conf = coffer_config:get("http"),
-            Key1 = binary_to_list(Key),
-            Conf1 = lists:keyreplace(Key1, 1, Conf, {Key1, Value}),
-
-            Bind = case Key of
-                <<"bind_http">> -> Value;
-                _ -> nil
-            end,
-
-            case do_restart_http(Bind, Conf1) of
-                true ->
-                    ok = coffer_config:set(Section, Key, Value),
-                    coffer_http_util:ok(Req1);
-                false ->
-                    coffer_http_util:error(500, "config unchanged", Req1)
-            end;
-        Error ->
-            Error
-    end.
-
-do_restart_http(nil, Conf) ->
-    Bind = coffer_config:get("core", "bind_http", ""),
-    do_restart_http(Bind, Conf);
-
-do_restart_http(Bind, Conf0) ->
-    %% we only expect to get string in parse config.
-    Conf = lists:map(fun({K, V}) ->
-                    {coffer_util:to_list(K), coffer_util:to_list(V)}
-            end, Conf0),
-
-    restart_http(Bind, Conf).
-
-restart_http("", _Conf) ->
-    case coffer_config:get("core", "bind_http", "") of
-        "" ->
-            true;
-        _ ->
-            stop_http(),
-            true
-    end;
-restart_http(Bind, Conf) ->
-    %% stop the HTTP API
-    %% Note: it would be better to first test if we can start a new listener
-    %% gracefully and then stop the old one if it's ok. but unfortunately we
-    %% can't yet since we are using cowboy.
-    stop_http(),
-
-    Opts = coffer_config:bind_opts(Bind),
-    {NbAcceptors, SslOpts, IsSsl} = coffer_config_util:http_config(Conf),
-    ListenerOpts = {NbAcceptors, Opts ++ SslOpts, IsSsl},
-
-    case coffer_config:start_listener(ListenerOpts, coffer_config:http_env(),
-                                      1) of
-
-        {_, false} ->
-            %% restart with the old conf
-            coffer_config:init_http(),
-            false;
-        _ ->
-            true
-    end.
-
-stop_http() ->
-    cowboy:stop_listener(coffer_http),
-    lager:info("HTTP API stopped", []).
