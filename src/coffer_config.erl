@@ -10,6 +10,7 @@
 
 -define(SERVER, ?MODULE).
 
+-export([start_link1/1]).
 -export([start_link/0]).
 
 -export([all/0,
@@ -32,6 +33,16 @@
              http_started}).
 
 -define(DEFAULT_PORT, 7000).
+
+
+start_link1(Pid) ->
+    case is_process_alive(Pid) of
+        true ->
+            link(Pid),
+            {ok, Pid};
+        false ->
+            start_link()
+    end.
 
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
@@ -179,8 +190,6 @@ terminate(_Reason,  #st{mod=Mod, handle=H}) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
-
-
 
 
 call(Msg) ->
