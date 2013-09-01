@@ -32,7 +32,7 @@ start_link() ->
                      permanent, brutal_kill, worker, [coffer_config]},
             CofferServer = ?CHILD(coffer_server, [[]]),
             Children = [Config, CofferServer],
-            BaseSpec = {{one_for_one, 1, 60}, Children},
+            BaseSpec = {{one_for_all, 10, 3600}, Children},
 
             %% start the supervisor
             {ok, SupPid} = supervisor:start_link({local, ?MODULE}, ?MODULE,
