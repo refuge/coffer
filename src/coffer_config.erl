@@ -90,7 +90,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 init_http() ->
-    Bind = econfig:get_value(coffer_config, "core", "bind_http", ""),
+    Bind = get("core", "bind_http", ""),
 
     %% only start if bind_http is set
     case Bind of
