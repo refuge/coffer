@@ -18,21 +18,11 @@ handle(Req, State) ->
 handle_req(<<"GET">>, [], Req) ->
     %% clean config, convert to binay value
     %%
-    Config = lists:foldl(fun
-                ({"http", HttpConfig}, Acc) ->
-                    HttpConfig1 = lists:map(fun({Name, Settings}) ->
-                                    KVs = [{list_to_binary(K),
-                                            list_to_binary(V)} || {K, V}
-                                                                  <- Settings],
-                                    {clean_name(Name), KVs}
-                            end, HttpConfig),
-                    [{<<"http">>, HttpConfig1} | Acc];
-
-                ({Key, Val}, Acc) ->
+    Config = lists:foldl(fun({Key, Val}, Acc) ->
                     KVs = [{list_to_binary(K),list_to_binary(V)}
                            || {K, V} <- Val],
                     [{list_to_binary(Key), KVs} | Acc]
-            end, [], econfig:cfg2list(coffer_config, " ")),
+            end, [], coffer_config:all()),
 
     {JsonConfig, Req1} = coffer_http_util:to_json(Config, Req),
     cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>}],
@@ -40,8 +30,7 @@ handle_req(<<"GET">>, [], Req) ->
 
 handle_req(<<"GET">>, [{section, Section}], Req) ->
     KVs = [{list_to_binary(K), list_to_binary(V)}
-           || {K, V} <- econfig:get_value(coffer_config,
-                                          binary_to_list(Section))],
+           || {K, V} <- coffer_config:get(binary_to_list(Section))],
     {Json, Req1} = coffer_http_util:to_json([{Section, KVs}], Req),
     cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>}],
                  Json, Req1);
@@ -243,15 +232,3 @@ restart_http(Bind, Conf) ->
 stop_http() ->
     cowboy:stop_listener(coffer_http),
     lager:info("HTTP API stopped", []).
-
-%% internals
-%%
-clean_name([ $\s | Rest ]) ->
-    clean_name(Rest);
-clean_name([ $\" | Rest ]) ->
-    clean_name(Rest);
-clean_name(Name0) ->
-    case re:split(Name0, "\"", [{return, list}]) of
-        [Name0] -> list_to_binary(Name0);
-        [Name1, _] -> list_to_binary(Name1)
-    end.

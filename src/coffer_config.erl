@@ -12,7 +12,8 @@
 
 -export([start_link/0]).
 
--export([set/2, set/3,
+-export([all/0,
+         set/2, set/3,
          get/1, get/2, get/3,
          del/1, del/2]).
 
@@ -31,6 +32,9 @@
 
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+all() ->
+    econfig:cfg2list(coffer_config).
 
 set(Section, Value) ->
     econfig:set_value(coffer_config, Section, Value).
